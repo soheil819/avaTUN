@@ -7,7 +7,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ ! -f "$ROOT/tunnelmgr/tunnelctl.py" ] || [ ! -f "$ROOT/scripts/install-preview.sh" ]; then
+if [ ! -f "$ROOT/tunnelmgr/tunnelctl.py" ] || [ ! -f "$ROOT/scripts/install-preview.sh" ] || \
+   [ ! -f "$ROOT/vendor/backhaul/bin/backhaul" ] || [ ! -f "$ROOT/vendor/backhaul/SHA256SUMS" ]; then
     echo 'Run install.sh from a complete avaTUN source directory.' >&2
     exit 1
 fi

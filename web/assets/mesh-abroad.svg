@@ -1,0 +1,122 @@
+<svg width="400" height="395" viewBox="0 0 400 395" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="topGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#313d59" />
+      <stop offset="100%" stop-color="#1b2336" />
+    </linearGradient>
+
+    <linearGradient id="leftWall" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e273b" />
+      <stop offset="100%" stop-color="#121826" />
+    </linearGradient>
+
+    <linearGradient id="rightWall" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#151b2b" />
+      <stop offset="100%" stop-color="#0b0f19" />
+    </linearGradient>
+
+    <filter id="glowCyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="glowYellow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <g id="server-tier">
+      <path d="M 65 95 L 65 133 Q 65 147 80 156 L 182 212 Q 200 222 218 212 L 320 156 Q 335 147 335 133 L 335 95 Z" fill="url(#leftWall)" />
+      <path d="M 200 175 L 200 217 Q 209 217 218 212 L 320 156 Q 335 147 335 133 L 335 95 L 200 175 Z" fill="url(#rightWall)" />
+      <path d="M 182 22 Q 200 12 218 22 L 322 79 Q 340 89 322 99 L 218 156 Q 200 166 182 156 L 78 99 Q 60 89 78 79 Z" 
+            fill="url(#topGrad)" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+
+      <g filter="url(#glowYellow)">
+        <ellipse cx="140" cy="164" rx="7.5" ry="9.5" transform="rotate(-28 140 164)" fill="#ffb703" />
+        <ellipse cx="160" cy="175" rx="7.5" ry="9.5" transform="rotate(-28 160 175)" fill="#ffb703" />
+      </g>
+      <g filter="url(#glowCyan)">
+        <ellipse cx="181" cy="186" rx="8" ry="10" transform="rotate(-28 181 186)" fill="#56f0ff" />
+      </g>
+
+      <g filter="url(#glowYellow)">
+        <polygon points="232,175 305,135 305,148 232,188" fill="#ffb703" />
+        <circle cx="232" cy="181.5" r="6.5" fill="#ffb703" />
+        <circle cx="305" cy="141.5" r="6.5" fill="#ffb703" />
+      </g>
+    </g>
+  </defs>
+
+  <!-- طبقه ۱ (پایین) -->
+  <use href="#server-tier" y="132" />
+
+  <!-- طبقه ۲ -->
+  <use href="#server-tier" y="66" />
+
+  <!-- طبقه ۳ (بالا) -->
+  <use href="#server-tier" y="0" />
+
+  <!-- پترن ماتریسی روی سقف طبقه بالا -->
+  <g transform="translate(200, 89) scale(1, 0.55) rotate(-45)">
+    <g fill="#212d47">
+      <rect x="-48" y="-48" width="14" height="14" rx="3" />
+      <rect x="-28" y="-48" width="14" height="14" rx="3" />
+      <rect x="-8"  y="-48" width="14" height="14" rx="3" />
+      <rect x="12"  y="-48" width="14" height="14" rx="3" />
+      <rect x="32"  y="-48" width="14" height="14" rx="3" />
+
+      <rect x="-48" y="-28" width="14" height="14" rx="3" />
+      <rect x="-28" y="-28" width="14" height="14" rx="3" />
+      <rect x="-8"  y="-28" width="14" height="14" rx="3" />
+      <rect x="12"  y="-28" width="14" height="14" rx="3" />
+      <rect x="32"  y="-28" width="14" height="14" rx="3" />
+
+      <rect x="-48" y="-8" width="14" height="14" rx="3" />
+      <rect x="-28" y="-8" width="14" height="14" rx="3" />
+      <rect x="-8"  y="-8" width="14" height="14" rx="3" />
+      <rect x="12"  y="-8" width="14" height="14" rx="3" />
+      <rect x="32"  y="-8" width="14" height="14" rx="3" />
+
+      <rect x="-48" y="12" width="14" height="14" rx="3" />
+      <rect x="-28" y="12" width="14" height="14" rx="3" />
+      <rect x="-8"  y="12" width="14" height="14" rx="3" />
+      <rect x="12"  y="12" width="14" height="14" rx="3" />
+      <rect x="32"  y="12" width="14" height="14" rx="3" />
+
+      <rect x="-48" y="32" width="14" height="14" rx="3" />
+      <rect x="-28" y="32" width="14" height="14" rx="3" />
+      <rect x="-8"  y="32" width="14" height="14" rx="3" />
+      <rect x="12"  y="32" width="14" height="14" rx="3" />
+      <rect x="32"  y="32" width="14" height="14" rx="3" />
+    </g>
+
+    <g fill="#56f0ff" filter="url(#glowCyan)">
+      <rect class="blink-1" x="-28" y="-48" width="34" height="14" rx="3" />
+      <rect x="32"  y="-48" width="14" height="14" rx="3" />
+      <rect x="-48" y="-28" width="14" height="34" rx="3" />
+      <rect class="blink-2" x="-8"  y="-28" width="34" height="14" rx="3" />
+      <rect x="-28" y="-8"  width="14" height="14" rx="3" />
+      <rect class="blink-1" x="12"  y="-8"  width="34" height="14" rx="3" />
+      <rect x="-8"  y="12"  width="14" height="34" rx="3" />
+      <rect class="blink-3" x="32"  y="12"  width="14" height="14" rx="3" />
+      <rect x="-48" y="32"  width="34" height="14" rx="3" />
+      <rect class="blink-2" x="12"  y="32"  width="34" height="14" rx="3" />
+    </g>
+
+    <g fill="#ffb703" filter="url(#glowYellow)">
+      <rect class="blink-2" x="-48" y="-48" width="14" height="14" rx="3" />
+      <rect x="12"  y="-48" width="14" height="14" rx="3" />
+      <rect class="blink-3" x="-28" y="-28" width="14" height="14" rx="3" />
+      <rect x="32"  y="-28" width="14" height="14" rx="3" />
+      <rect class="blink-1" x="-8"  y="-8"  width="14" height="14" rx="3" />
+      <rect x="-48" y="12"  width="34" height="14" rx="3" />
+      <rect class="blink-3" x="12"  y="12"  width="14" height="14" rx="3" />
+    </g>
+  </g>
+</svg>

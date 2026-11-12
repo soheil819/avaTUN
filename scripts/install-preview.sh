@@ -102,6 +102,55 @@ install -d -o root -g root -m 0700 /etc/tunnelmgr/openconnect
 install -d -m 0700 /etc/tunnelmgr/mesh
 install -d -m 0755 /opt/tunnelmgr/scripts
 install -m 0755 "$ROOT/scripts/mesh-worker.py" "$ROOT/scripts/mesh-deploy.py" "$ROOT/scripts/install-preview.sh" /opt/tunnelmgr/scripts/
+install -d -o root -g root -m 0755 /opt/tunnelmgr/vendor/backhaul/bin /opt/tunnelmgr/vendor/backhaul/scripts
+install -o root -g root -m 0755 "$ROOT/vendor/backhaul/bin/backhaul" /opt/tunnelmgr/vendor/backhaul/bin/backhaul
+install -o root -g root -m 0755 "$ROOT/vendor/backhaul/scripts/backhaul-manager.py" /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py
+install -o root -g root -m 0644 "$ROOT/vendor/backhaul/SHA256SUMS" "$ROOT/vendor/backhaul/LICENSE" "$ROOT/vendor/backhaul/THIRD_PARTY.txt" /opt/tunnelmgr/vendor/backhaul/
+
+# Backhaul TUN is shipped as a verified amd64 core and manager. Preserve an
+# existing installation; bootstrap only when both manager and core are absent.
+if [ "$(uname -m)" = x86_64 ]; then
+    if [ ! -e /usr/local/bin/backhaul-manager ] && [ ! -e /usr/local/bin/backhaul ]; then
+        python3 /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py install \
+            --binary /opt/tunnelmgr/vendor/backhaul/bin/backhaul \
+            --manifest /opt/tunnelmgr/vendor/backhaul/SHA256SUMS \
+            --manifest-entry bin/backhaul
+    elif [ ! -x /usr/local/bin/backhaul-manager ] || [ ! -x /usr/local/bin/backhaul ]; then
+        echo 'WARNING: Existing Backhaul manager/core installation is partial; leaving it unchanged. Backhaul TUN may need manual repair.' >&2
+    elif [ ! -e /var/lib/backhaul-manager/state.json ]; then
+        # Migrate only an exact bundled core with no pre-existing tunnel
+        # configs or units. Record the old manager files so its guarded
+        # installer can replace them without taking ownership of user tunnels.
+        python3 - <<'PY' || echo 'WARNING: Existing Backhaul install is not an empty, verifiable setup; preserving it.' >&2
+import hashlib, json, os, pathlib, re, subprocess, sys
+base=pathlib.Path('/opt/tunnelmgr/vendor/backhaul')
+binary=pathlib.Path('/usr/local/bin/backhaul')
+state=pathlib.Path('/var/lib/backhaul-manager/state.json')
+manifest=(base/'SHA256SUMS').read_text().splitlines()
+matches=[line.split()[0].lower() for line in manifest if re.fullmatch(r'[0-9a-fA-F]{64}  bin/backhaul',line)]
+digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+if len(matches)!=1 or digest(binary)!=matches[0]:sys.exit(1)
+configs=list(pathlib.Path('/etc/backhaul').glob('*.toml'))
+units=list(pathlib.Path('/etc/systemd/system').glob('backhaul-*.service'))
+if configs or units:sys.exit(1)
+paths=('/usr/local/bin/backhaul-manager.py','/usr/local/bin/backhaul-manager','/usr/local/bin/backhaul.sh')
+files={p:digest(pathlib.Path(p)) for p in paths if pathlib.Path(p).is_file() and not pathlib.Path(p).is_symlink()}
+state.parent.mkdir(parents=True,exist_ok=True)
+fd=os.open(state,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+with os.fdopen(fd,'w') as f:
+    json.dump({'schema':1,'core_sha256':matches[0],'tunnels':{},'manager_files':files},f,separators=(',',':'))
+    f.write('\n');f.flush();os.fsync(f.fileno())
+PY
+        if [ -e /var/lib/backhaul-manager/state.json ]; then
+            python3 /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py install \
+                --binary /opt/tunnelmgr/vendor/backhaul/bin/backhaul \
+                --manifest /opt/tunnelmgr/vendor/backhaul/SHA256SUMS \
+                --manifest-entry bin/backhaul
+        fi
+    fi
+else
+    echo "Backhaul TUN core is bundled for amd64; skipped on $(uname -m)."
+fi
 install -m 0644 "$ROOT/tunnelmgr/apply_profile.py" /opt/tunnelmgr/tunnelmgr/
 install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-mesh@.service" /etc/systemd/system/
 install -m 0644 "$ROOT/tunnelmgr/profiles.py" /opt/tunnelmgr/tunnelmgr/

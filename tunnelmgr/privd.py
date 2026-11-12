@@ -7,10 +7,16 @@ SOCKET='/run/tunnelmgr/privd.sock'
 ID=re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
 NAME=re.compile(r'^[a-zA-Z0-9_]{1,15}$')
 APP_UID=pwd.getpwnam('tunnelmgr').pw_uid
-FIELDS={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','replace'}
+FIELDS={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','replace','carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
 
 def send(c,v):c.sendall((json.dumps(v)+'\n').encode())
 def invoke(args,timeout=65):return subprocess.run(['/usr/local/bin/backhaul-manager',*args],text=True,capture_output=True,timeout=timeout)
+def safe(value,limit,label):
+    if not isinstance(value,str) or not value or len(value)>limit or any(ch in value for ch in '\r\n\x00'):raise ValueError('invalid '+label)
+    return value
+def integer(value,low,high,label):
+    if type(value) is not int or not low<=value<=high:raise ValueError(label+' must be '+str(low)+'..'+str(high))
+    return value
 
 HAPROXY_MARKER_START='# BEGIN TUNNELMGR FORWARDS'
 HAPROXY_MARKER_END='# END TUNNELMGR FORWARDS'
@@ -49,23 +55,52 @@ def tunnel_create(req,ident):
     secret=cfg.get('secret_file')
     if not isinstance(secret,str) or not secret.startswith('/etc/backhaul/secrets/') or '..' in secret.split('/'):
         raise ValueError('secret_file must point inside /etc/backhaul/secrets')
-    local=ipaddress.ip_interface(cfg.get('tun_local',''))
-    remote=ipaddress.ip_interface(cfg.get('tun_remote',''))
-    if local.version!=remote.version or local.network!=remote.network or local.ip==remote.ip:raise ValueError('local and remote addresses must be distinct peers in the same subnet')
-    if local.ip in (local.network.network_address,local.network.broadcast_address) or remote.ip in (remote.network.network_address,remote.network.broadcast_address):raise ValueError('both tunnel addresses must be usable host addresses')
-    if not local.ip.is_private or not remote.ip.is_private:raise ValueError('use private internal tunnel IP addresses')
-    name=cfg.get('tun_name','tun0')
-    if not isinstance(name,str) or not NAME.fullmatch(name):raise ValueError('invalid Linux interface name')
-    mtu=cfg.get('tun_mtu',1400)
-    if not isinstance(mtu,int) or not 576<=mtu<=9000:raise ValueError('MTU must be 576..9000')
-    health=cfg.get('health_port',19080)
-    if not isinstance(health,int) or not 1<=health<=65535:raise ValueError('health port must be 1..65535')
-    if cfg.get('replace') is not True:
-        probe=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        try:probe.bind(('127.0.0.1',health))
-        except OSError as e:raise ValueError(f'health port {health} is already in use; choose a unique port') from e
-        finally:probe.close()
-    args=['create',ident,'--mode',mode,'--transport','tun','--tun-name',name,'--tun-local',str(local),'--tun-remote',str(remote),'--tun-mtu',str(mtu),'--health-port',str(health),'--secret-file',secret]
+    transport=cfg.get('carrier','tun')
+    allowed=('tcp','tcpmux','xtcpmux','ws','wss','wsmux','wssmux','xwsmux','anytls','tun')
+    if transport not in allowed:raise ValueError('unsupported Backhaul transport')
+    args=['create',ident,'--mode',mode,'--transport',transport,'--secret-file',secret]
+    if transport=='tun':
+        encapsulation=cfg.get('encapsulation','tcp')
+        if encapsulation not in ('tcp','ipx'):raise ValueError('TUN encapsulation must be TCP or IPX')
+        args += ['--encapsulation',encapsulation,'--tun-name',safe(cfg.get('tun_name','bh0'),15,'interface name')]
+        mtu=cfg.get('tun_mtu',1400)
+        if type(mtu) is not int or not 576<=mtu<=9000:raise ValueError('MTU must be 576..9000')
+        args += ['--tun-mtu',str(mtu)]
+        health=cfg.get('health_port',19080)
+        if type(health) is not int or not 1<=health<=65535:raise ValueError('health port must be 1..65535')
+        if encapsulation=='tcp':
+            local=ipaddress.ip_interface(cfg.get('tun_local',''));remote=ipaddress.ip_interface(cfg.get('tun_remote',''))
+            if local.version!=remote.version or local.network!=remote.network or local.ip==remote.ip:raise ValueError('local and remote addresses must be distinct peers in the same subnet')
+            if local.ip in (local.network.network_address,local.network.broadcast_address) or remote.ip in (remote.network.network_address,remote.network.broadcast_address):raise ValueError('both tunnel addresses must be usable host addresses')
+            if not local.ip.is_private or not remote.ip.is_private:raise ValueError('use private internal tunnel IP addresses')
+            args += ['--tun-local',str(local),'--tun-remote',str(remote),'--health-port',str(health)]
+            if cfg.get('replace') is not True:
+                probe=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                try:probe.bind(('127.0.0.1',health))
+                except OSError as e:raise ValueError(f'health port {health} is already in use; choose a unique port') from e
+                finally:probe.close()
+        else:
+            if cfg.get('tun_local') or cfg.get('tun_remote'):raise ValueError('IPX mode uses outer IPs, not TUN peer addresses')
+            profile=cfg.get('ipx_profile','udp')
+            if profile not in ('icmp','ipip','udp','tcp','gre','bip'):raise ValueError('unsupported IPX profile')
+            local=ipaddress.IPv4Address(cfg.get('local_ip',''));remote=ipaddress.IPv4Address(cfg.get('peer_ip',''))
+            args += ['--ipx-profile',profile,'--local-ip',str(local),'--peer-ip',str(remote),'--interface',safe(cfg.get('interface','eth0'),15,'interface')]
+            for field,flag in (('spoof_source','--spoof-source'),('expected_peer_source','--expected-peer-source')):
+                if cfg.get(field):args += [flag,str(ipaddress.IPv4Address(cfg[field]))]
+    else:
+        args += ['--pool',str(integer(cfg.get('pool',8),1,4096,'connection pool'))]
+        ports=cfg.get('ports','')
+        if not isinstance(ports,str) or len(ports)>4096 or not re.fullmatch(r'[0-9,=: -]*',ports):raise ValueError('invalid port mappings')
+        if ports:args += ['--ports',ports]
+        if mode=='server':
+            for field,flag in (('accept_udp','--accept-udp'),('proxy_protocol','--proxy-protocol')):
+                if cfg.get(field):args.append(flag)
+        for field,flag in ((('cert','--cert'),('key','--key')) if mode=='server' else (('ca','--ca'),('sni','--sni'),('edge','--edge'))):
+            if cfg.get(field):args += [flag,safe(cfg[field],512,field)]
+        binds=cfg.get('source_bind',[])
+        if mode=='client':
+            if not isinstance(binds,list) or len(binds)>32:raise ValueError('source_bind must be a list of at most 32 IPs')
+            for bind in binds:args += ['--source-bind',str(ipaddress.ip_address(bind))]
     if mode=='server':
         listen=cfg.get('listen','0.0.0.0:18443')
         if not isinstance(listen,str) or len(listen)>128:raise ValueError('invalid listen address')
@@ -222,10 +257,17 @@ def handle(c):
             finally:probe.close()
             return send(c,{'ok':sent==len(frame),'interface':interface,'bytes':sent,'checked_at':int(time.time())})
         if op=='secret':
-            action=req.get('action');path=Path('/etc/backhaul/secrets')/(ident+'.token')
+            action=req.get('action');kind=req.get('kind','token')
+            if kind not in ('token','psk'):raise ValueError('invalid secret kind')
+            path=Path('/etc/backhaul/secrets')/(ident+'.'+kind)
             if action=='create':
                 value=req.get('value')
                 if not isinstance(value,str) or not 16<=len(value)<=4096 or not re.fullmatch(r'[A-Za-z0-9_=-]+',value):raise ValueError('invalid shared secret')
+                if kind=='psk':
+                    import base64
+                    try:
+                        if len(base64.b64decode(value,validate=True))!=32:raise ValueError()
+                    except Exception as e:raise ValueError('IPX PSK must encode exactly 32 random bytes') from e
                 path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
                 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
                 with os.fdopen(fd,'w') as f:f.write(value+'\n')

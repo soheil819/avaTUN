@@ -32,7 +32,9 @@ The GitHub bootstrap checks out the private repository and runs `install.sh` wit
 
 For a source checkout already on the server, `sudo ./install.sh` runs the same installation without fetching from GitHub.
 
-The underlying package installer is `scripts/install-preview.sh`; unlike `install.sh`, it is intended for updating an existing installation and does not create login credentials. Existing accounts created under the former token scheme need a one-time password reset:
+The installer includes the supplied, checksum-verified Backhaul TUN core and its manager for Linux amd64. It installs them on first setup and preserves an already installed manager/core on later panel updates. Other CPU architectures still install avaTUN, but need a matching Backhaul core package before they can create Backhaul TUN links. The core's license and third-party notices are in `vendor/backhaul/`.
+
+The underlying package installer is `scripts/install-preview.sh`; unlike `install.sh`, it is intended for updating an existing installation and does not create login credentials. Remote server updates transfer the same verified Backhaul assets. Existing accounts created under the former token scheme need a one-time password reset:
 
 ```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
