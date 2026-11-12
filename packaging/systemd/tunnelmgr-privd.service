@@ -1,0 +1,24 @@
+[Unit]
+Description=Restricted tunnel management helper
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=tunnelmgr
+RuntimeDirectory=tunnelmgr
+RuntimeDirectoryMode=0750
+UMask=0007
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/privd.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_RAW
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/tunnelmgr /etc/swanctl/conf.d /run/tunnelmgr /etc/backhaul /var/lib/backhaul-manager /var/lib/tunnelmgr /etc/systemd/system /usr/local/bin -/etc/haproxy
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+
+[Install]
+WantedBy=multi-user.target

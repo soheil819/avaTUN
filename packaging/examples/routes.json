@@ -1,0 +1,1 @@
+{"kind":"routes","routes":[{"prefix":"172.26.10.0/24","via":"10.240.0.2","interface":"bh0000"}]}

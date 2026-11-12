@@ -1,0 +1,1 @@
+{"kind":"gre","interface":"tmgre0","inner_local":"10.245.0.1/30","inner_peer":"10.245.0.2/30","outer_local":"192.0.2.10","outer_peer":"192.0.2.20","mtu":1400}

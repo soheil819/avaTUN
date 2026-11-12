@@ -1,0 +1,20 @@
+[Unit]
+Description=Tunnel manager OpenVPN peer %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/openvpn --config /etc/tunnelmgr/openvpn/%i.conf
+Restart=on-failure
+RestartSec=3
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+DeviceAllow=/dev/net/tun rw
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/tunnelmgr/openvpn /run
+
+[Install]
+WantedBy=multi-user.target

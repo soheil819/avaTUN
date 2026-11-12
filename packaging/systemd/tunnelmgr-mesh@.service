@@ -1,0 +1,10 @@
+[Unit]
+Description=Deploy managed mesh profile %i
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/apply_profile.py %i
+TimeoutStartSec=15min
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true

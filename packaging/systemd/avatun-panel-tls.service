@@ -1,0 +1,21 @@
+[Unit]
+Description=Issue or renew the Avatun panel TLS certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0027
+Environment=HOME=/var/lib/letsencrypt
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/tls_manager.py apply
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/tunnelmgr /etc/letsencrypt /etc/systemd/system /var/lib/tunnelmgr /var/lib/letsencrypt /var/log/letsencrypt /var/cache/letsencrypt /run/lock
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+TimeoutStartSec=20min
+
+[Install]
+WantedBy=multi-user.target

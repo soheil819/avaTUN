@@ -1,0 +1,19 @@
+[Unit]
+Description=Tunnel Manager OpenConnect VPN peer %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/openconnect_runner.py /etc/tunnelmgr/openconnect/%i/client.json
+Restart=on-failure
+RestartSec=5
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+DeviceAllow=/dev/net/tun rw
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/run
+
+[Install]
+WantedBy=multi-user.target

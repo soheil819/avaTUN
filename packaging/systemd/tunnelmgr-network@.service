@@ -1,0 +1,16 @@
+[Unit]
+Description=Tunnel Manager network profile %i
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/network.py up %i
+ExecStop=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/network.py down %i
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/swanctl/conf.d /etc/tunnelmgr/openvpn /etc/tunnelmgr/openconnect /etc/wireguard /run
+[Install]
+WantedBy=multi-user.target

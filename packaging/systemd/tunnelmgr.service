@@ -1,0 +1,22 @@
+[Unit]
+Description=Tunnel Manager dashboard and API
+After=network.target
+
+[Service]
+Type=simple
+User=tunnelmgr
+Group=tunnelmgr
+Environment=TUNNELMGR_HOME=/var/lib/tunnelmgr
+WorkingDirectory=/opt/tunnelmgr
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py api --host 0.0.0.0 --port 8765
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tunnelmgr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
