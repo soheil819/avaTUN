@@ -57,11 +57,14 @@ else
 fi
 
 PACKAGES=""
+command -v curl >/dev/null 2>&1 || PACKAGES="$PACKAGES curl"
+command -v ip >/dev/null 2>&1 || PACKAGES="$PACKAGES iproute2"
 command -v haproxy >/dev/null 2>&1 || PACKAGES="$PACKAGES haproxy"
 command -v wg >/dev/null 2>&1 || PACKAGES="$PACKAGES wireguard-tools"
 command -v openvpn >/dev/null 2>&1 || PACKAGES="$PACKAGES openvpn"
 command -v ocserv >/dev/null 2>&1 || PACKAGES="$PACKAGES ocserv"
 command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
+command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
 command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
@@ -120,7 +123,11 @@ if p.exists():
     p.write_text('\n'.join(out)+'\n')
 PY
 systemctl daemon-reload
-systemctl enable --now frr.service tunnelmgr-privd.service tunnelmgr.service
+if [ "${AVATUN_INSTALL_DEFER_START:-0}" = "1" ]; then
+    systemctl enable frr.service tunnelmgr-privd.service tunnelmgr.service
+else
+    systemctl enable --now frr.service tunnelmgr-privd.service tunnelmgr.service
+fi
 
 # Never take over an existing HAProxy configuration blindly. Validate the
 # complete primary config before starting/reloading the service. An invalid
@@ -139,5 +146,7 @@ if command -v haproxy >/dev/null 2>&1 && [ -r /etc/haproxy/haproxy.cfg ]; then
 else
     echo 'WARNING: HAProxy config is missing; leaving haproxy.service untouched.' >&2
 fi
-systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service
-systemctl --no-pager status tunnelmgr.service
+if [ "${AVATUN_INSTALL_DEFER_START:-0}" != "1" ]; then
+    systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service
+    systemctl --no-pager status tunnelmgr.service
+fi

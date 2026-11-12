@@ -20,7 +20,19 @@ For a two-ended link, create each endpoint on its server and reverse the local/p
 
 The routing page can configure paired BGP or OSPF profiles through FRR on both tunnel endpoints. BGP and OSPF export only the explicitly entered private prefixes; port-forward backends on routed remote networks are accepted only when covered by the matching far-side route profile. The routing daemon must be available through the system `frr` package.
 
-The preview installer is `scripts/install-preview.sh`. It installs the web font asset together with the dashboard and installs the service units and protocol runners. Existing accounts created under the former token scheme need a one-time password reset:
+## Install
+
+The repository is private, so authenticate GitHub CLI on the Debian/Ubuntu server first (`gh auth login`). Then install directly from GitHub with one command:
+
+```sh
+gh api repos/soheil819/avaTUN/contents/scripts/install-from-github.sh --jq .content | base64 -d | bash
+```
+
+The GitHub bootstrap checks out the private repository and runs `install.sh` with sudo. The installer installs prerequisites and supported tunnel packages, adds a persistent 512 MiB swap file only when no swap is active, installs the services, creates the initial `admin` login, then starts the panel. It prints the panel URL and generated password once at the end; the password is not saved in a plaintext file. Set `PANEL_HOST` before the command to override the displayed address. If UFW is active, TCP port 8765 is allowed; any provider firewall must be configured separately. The default URL uses HTTP. HTTPS can be configured later in **Settings**.
+
+For a source checkout already on the server, `sudo ./install.sh` runs the same installation without fetching from GitHub.
+
+The underlying package installer is `scripts/install-preview.sh`; unlike `install.sh`, it is intended for updating an existing installation and does not create login credentials. Existing accounts created under the former token scheme need a one-time password reset:
 
 ```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin

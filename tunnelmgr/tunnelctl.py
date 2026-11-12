@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.09"
+APP_VERSION="0.1.10"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -62,7 +62,7 @@ def account(args):
         if args.action=="revoke":
             if not c.execute("DELETE FROM accounts WHERE name=?",(args.name,)).rowcount:raise ValueError("unknown account")
             return
-        password=args.password or getpass.getpass("New password (12+ characters): ")
+        password=args.password or (sys.stdin.readline().rstrip("\r\n") if getattr(args,"password_stdin",False) else getpass.getpass("New password (12+ characters): "))
         if len(password)<12:raise ValueError("password must contain at least 12 characters")
         if args.action=="password":
             if not c.execute("UPDATE accounts SET digest=? WHERE name=?",(password_digest(password),args.name)).rowcount:raise ValueError("unknown account")
@@ -1427,7 +1427,7 @@ def main():
     s.add_parser("init");s.add_parser("list");a=s.add_parser("api");a.add_argument("--host",default="127.0.0.1");a.add_argument("--port",type=int,default=8765)
     b=s.add_parser("backhaul");b.add_argument("args",nargs=argparse.REMAINDER)
     m=s.add_parser("mesh");ms=m.add_subparsers(dest="mesh_cmd",required=True);mp=ms.add_parser("plan");mp.add_argument("--nodes",required=True);mp.add_argument("--pool",default="10.240.0.0/16");mp.add_argument("--topology",choices=("full","hub"),default="full");mp.add_argument("--hub");mp.add_argument("--direction",choices=("direct","reverse"),default="direct");mp.add_argument("--public-nodes");mp.add_argument("--endpoints",help="comma-separated node=host entries")
-    u=s.add_parser("account");u.add_argument("action",choices=("create","revoke","list","password"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"),default="viewer");u.add_argument("--password",help=argparse.SUPPRESS)
+    u=s.add_parser("account");u.add_argument("action",choices=("create","revoke","list","password"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"),default="viewer");u.add_argument("--password",help=argparse.SUPPRESS);u.add_argument("--password-stdin",action="store_true",help=argparse.SUPPRESS)
     n=p.parse_args()
     try:
         if n.cmd=="init":db().close();print(f"initialized {DB}; create the first user with: tunnelctl.py account create admin --role admin")
