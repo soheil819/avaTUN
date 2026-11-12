@@ -4,7 +4,7 @@
 
 مخزن کاری فعلی خالی است؛ بنابراین این سند نقطه شروع طراحی است. هدف، ساخت سامانه‌ای برای Ubuntu LTS و Debian stable روی Linux amd64/arm64 است. توسعه روی macOS امکان‌پذیر است، اما اعتبارسنجی عملی درایورها و نصب باید روی Linux انجام شود.
 
-پوشهٔ دسکتاپ شامل نسخهٔ `backhaul-ir_spoof` است. README همان بسته می‌گوید این یک بازسازی مستقل Go است، با هستهٔ اصلی Backhaul بایت‌به‌بایت یا از نظر پروتکل سازگار نیست. بنابراین در رابط باید دقیقاً با نام نسخهٔ `ir_spoof 0.1.0` معرفی شود و هیچ ادعای سازگاری با Backhaul اصلی نداشته باشد. فایل‌های نسخه و مستندات بسته مرجع قابلیت‌ها هستند؛ تنظیمات جدید یا مدهای حدسی ساخته نمی‌شوند.
+در این سامانه، Backhaul معمولی از طریق مدیر Backhaul نصب‌شده روی هر endpoint اجرا می‌شود. قابلیت‌ها و گزینه‌های پنل باید با همان نسخهٔ معمولی سازگار باشند؛ قابلیت اختصاصی یا تغییریافته‌ای به آن نسبت داده نمی‌شود.
 
 ## معماری پیشنهادی
 
@@ -14,7 +14,7 @@
 Browser ── HTTPS ── API/Auth ─┐
 CLI ────── Unix socket/API ────┼── Core + SQLite
                               ├── Protocol drivers ── iproute2 / strongSwan
-                              ├── Backhaul adapter ── verified packaged binary
+                              ├── Backhaul adapter ── regular Backhaul manager
                               └── Monitor ── rtnetlink / procfs / systemd journal
 ```
 
@@ -48,7 +48,7 @@ CLI ────── Unix socket/API ────┼── Core + SQLite
 | ESP خام | XFRM state/policy و پروتکل IP 50 | SA کلید/پارامتر نیاز دارد؛ برای NAT نامناسب؛ رابط سادهٔ عمومی ارائه نشود مگر پیکربندی کامل SA. |
 | ESP over UDP | strongSwan NAT-T / UDP encapsulation | NAT-T جزئی از SA/IPsec است، نه تونل عمومی UDP مستقل. |
 | GRE/IPIP/SIT over FoU | `ip fou` و `encap fou` در tunnel | پشتیبانی بر اساس kernel/iproute2؛ UDP port و mode باید همسان باشد. |
-| Backhaul بستهٔ حاضر | adapter برای `backhaul-manager`/هستهٔ همین release | نسخهٔ بسته از TCP، WS، WSS، mux labels، AnyTLS مخصوص این بسته، TUN و IPXهای مستند پشتیبانی می‌کند؛ با Backhaul اصلی wire-compatible نیست. |
+| Backhaul TUN | adapter برای `backhaul-manager` نصب‌شده | فقط گزینه‌های مستند و پشتیبانی‌شدهٔ مدیر Backhaul معمولی استفاده شوند. |
 
 ابزارهای پایه: `iproute2`, `systemd`, `nftables` (فقط در صورت درخواست قواعد مدیریت‌شده), `strongSwan` برای IPsec، `ethtool` اختیاری برای شمارنده‌های NIC، `ca-certificates`. برای TUN: `/dev/net/tun` و دسترسی مناسب. نصب‌کننده باید OS/معماری/kernel را تشخیص دهد و وابستگی‌ها را قبل از تغییر نمایش دهد.
 

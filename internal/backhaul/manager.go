@@ -1,4 +1,4 @@
-// Package backhaul invokes the documented ir_spoof manager without emulating
+// Package backhaul invokes the installed Backhaul manager without emulating
 // its protocol or translating unsupported options.
 package backhaul
 
@@ -22,7 +22,7 @@ func Run(args []string) error {
 	if len(args) == 0 { return errors.New("expected a documented backhaul-manager command") }
 	name := args[0]
 	if name == "logs" { return logs(args[1:]) }
-	if !allowed[name] { return fmt.Errorf("unsupported command %q; see the packaged ir_spoof manager documentation", name) }
+	if !allowed[name] { return fmt.Errorf("unsupported command %q; see the installed Backhaul manager documentation", name) }
 	for _, arg := range args[1:] {
 		if arg == "--root" || strings.HasPrefix(arg, "--root=") || arg == "--test-core-command" {
 			return errors.New("simulation/test-only manager options are not allowed by tunnelctl")
@@ -35,7 +35,7 @@ func Run(args []string) error {
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) { return fmt.Errorf("manager exited with status %d", ee.ExitCode()) }
-		if strings.Contains(err.Error(), "executable file not found") { return fmt.Errorf("%s not found; install the supplied ir_spoof 0.1.0 Linux package first", bin) }
+		if strings.Contains(err.Error(), "executable file not found") { return fmt.Errorf("%s not found; install the Backhaul manager package first", bin) }
 		return err
 	}
 	return nil

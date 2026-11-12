@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tunnel manager API; delegates Backhaul operations to the installed ir_spoof manager."""
+"""avaTUN API; delegates Backhaul operations to the installed Backhaul manager."""
 from __future__ import annotations
 import hashlib
 import argparse, getpass, ipaddress, json, os, pathlib, re, secrets, shlex, shutil, sqlite3, subprocess, sys, time
@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.08"
+APP_VERSION="0.1.09"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -28,6 +28,11 @@ def db():
             finally:self.close()
     c=sqlite3.connect(DB,factory=ManagedConnection); c.row_factory=sqlite3.Row
     c.execute("CREATE TABLE IF NOT EXISTS tunnels(id TEXT PRIMARY KEY,kind TEXT NOT NULL,mode TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,metadata TEXT NOT NULL DEFAULT '{}')")
+    legacy=c.execute("SELECT id,metadata FROM tunnels WHERE kind LIKE 'backhaul-%'").fetchall()
+    for row in legacy:
+        metadata=json.loads(row["metadata"] or "{}")
+        if "manager" in metadata:metadata["manager"]="Backhaul"
+        c.execute("UPDATE tunnels SET kind='backhaul',metadata=? WHERE id=?",(json.dumps(metadata),row["id"]))
     c.execute("CREATE TABLE IF NOT EXISTS accounts(name TEXT PRIMARY KEY,role TEXT NOT NULL,digest TEXT UNIQUE NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS servers(id TEXT PRIMARY KEY,host TEXT NOT NULL,user TEXT NOT NULL,identity TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     server_columns={r[1] for r in c.execute("PRAGMA table_info(servers)")}
@@ -314,7 +319,7 @@ def install_remote(server):
     if p.returncode:raise RuntimeError((p.stderr or p.stdout).decode(errors="replace")[-2000:])
     return {"ok":True,"output":p.stdout.decode(errors="replace")[-1500:]}
 def save(ident,mode,metadata):
-    with db() as c:c.execute("INSERT INTO tunnels(id,kind,mode,metadata) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET mode=excluded.mode,metadata=excluded.metadata",(ident,"backhaul-ir_spoof-0.1.0",mode,json.dumps(metadata)))
+    with db() as c:c.execute("INSERT INTO tunnels(id,kind,mode,metadata) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET mode=excluded.mode,metadata=excluded.metadata",(ident,"backhaul",mode,json.dumps(metadata)))
 
 def forward_rows():
     with db() as c:return [json.loads(r["config"]) for r in c.execute("SELECT config FROM port_forwards ORDER BY id")]
@@ -552,8 +557,8 @@ def create_instance(data):
     if not result.get("ok"):raise RuntimeError(result.get("error",result.get("output","create failed")))
     metadata={k:v for k,v in config.items() if k!="secret_file"}
     if secret_managed:metadata["secret_managed"]=True
-    save(ident,mode,{"manager":"ir_spoof 0.1.0",**metadata})
-    return {"id":ident,"kind":"backhaul-ir_spoof-0.1.0","mode":mode,"tun_local":config["tun_local"],"tun_remote":config["tun_remote"]}
+    save(ident,mode,{"manager":"Backhaul",**metadata})
+    return {"id":ident,"kind":"backhaul","mode":mode,"tun_local":config["tun_local"],"tun_remote":config["tun_remote"]}
 
 def create_native(data):
     ident=data.get("id")
@@ -915,7 +920,7 @@ def update_tunnel(data):
         if not result.get("ok"):raise RuntimeError(result.get("error",result.get("output","tunnel update failed")))
         metadata={k:v for k,v in config.items() if k not in ("secret_file","replace")}
         if old["metadata"].get("secret_managed"):metadata["secret_managed"]=True
-        save(ident,mode,{"manager":"ir_spoof 0.1.0",**metadata})
+        save(ident,mode,{"manager":"Backhaul",**metadata})
         return {"id":ident,"ok":True}
     if not old_profile:raise ValueError("Changing between Backhaul and native tunnel types is not supported in-place")
     profile=old_profile

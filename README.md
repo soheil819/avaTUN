@@ -1,6 +1,6 @@
-# Linux Tunnel Management System
+# avaTUN
 
-See [architecture](outputs/architecture-plan-fa.md) and [local run guide](docs/run-local-fa.md). The manager provides a password-based web dashboard, SQLite tunnel and server inventory, SSH-based remote installation and tunnel lifecycle actions, periodic ICMP health probes, and a topology view. Backhaul integration delegates to the supplied **ir_spoof 0.1.0** manager and is not compatible with the original Backhaul wire protocol.
+See [architecture](outputs/architecture-plan-fa.md) and [local run guide](docs/run-local-fa.md). avaTUN provides a password-based web dashboard, SQLite tunnel and server inventory, SSH-based remote installation and tunnel lifecycle actions, periodic ICMP health probes, and a topology view. Backhaul TUN integration uses the regular Backhaul manager installed on each endpoint.
 
 ## Start the dashboard
 
