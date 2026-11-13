@@ -200,7 +200,18 @@ def haproxy_apply(req):
                 row=database.execute('SELECT metadata FROM tunnels WHERE id=?',(tunnel,)).fetchone()
             if not row:raise ValueError('backend tunnel does not exist on this server')
             metadata=json.loads(row[0]);peer=metadata.get('tun_remote','')
-            if not peer or str(ipaddress.ip_interface(peer).ip)!=str(address) or metadata.get('transport')=='erspan':raise ValueError('backend address does not match an eligible tunnel peer')
+            ipx=metadata.get('carrier')=='tun' and metadata.get('encapsulation')=='ipx'
+            if metadata.get('transport')=='erspan':raise ValueError('backend address does not match an eligible tunnel peer')
+            if ipx:
+                interface=metadata.get('tun_name','')
+                if not isinstance(interface,str) or not NAME.fullmatch(interface):raise ValueError('IPX tunnel interface is invalid')
+                ipbin=shutil.which('ip') or '/usr/sbin/ip';family='-6' if address.version==6 else '-4'
+                route=subprocess.run([ipbin,family,'-json','route','get',str(address)],capture_output=True,text=True,timeout=8)
+                if route.returncode:raise ValueError('IPX backend address has no route through its TUN interface')
+                try:routes=json.loads(route.stdout or '[]')
+                except ValueError as e:raise ValueError('could not verify IPX backend route') from e
+                if not routes or routes[0].get('dev')!=interface:raise ValueError('IPX backend address must be reachable through tunnel interface '+interface)
+            elif not peer or str(ipaddress.ip_interface(peer).ip)!=str(address):raise ValueError('backend address does not match an eligible tunnel peer')
             weight=backend.get('weight',1)
             if type(weight) is not int or not 1<=weight<=256:raise ValueError('backend weight must be 1..256')
             name=f'path{idx}_{tunnel}'

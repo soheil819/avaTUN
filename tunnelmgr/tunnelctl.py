@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.65"
+APP_VERSION="0.1.66"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -551,29 +551,36 @@ def normalize_forward(data,server_id):
         meta=item.get("metadata",{});transport=meta.get("transport","")
         if transport=="erspan":raise ValueError("ERSPAN برای حمل ترافیک پورت‌فوروارد مناسب نیست")
         remote=meta.get("tun_remote")
-        if not remote:raise ValueError(f"تونل {tunnel_id} آدرس داخلی peer ندارد")
-        try:peer_address=ipaddress.ip_interface(remote).ip
-        except ValueError as e:raise ValueError(f"IP داخلی peer در تونل {tunnel_id} نامعتبر است") from e
+        ipx=meta.get('carrier')=='tun' and meta.get('encapsulation')=='ipx'
+        if not remote and not ipx:raise ValueError(f"تونل {tunnel_id} آدرس داخلی peer ندارد")
         requested=entry.get('address')
-        if requested:
+        if ipx:
+            if not requested:raise ValueError(f"برای مسیر IPX تونل {tunnel_id}، IP مقصد قابل‌دسترسی از رابط TUN را وارد کن")
             try:address_ip=ipaddress.ip_address(requested)
             except ValueError as e:raise ValueError(f"IP مقصد برای تونل {tunnel_id} نامعتبر است") from e
-            if address_ip.version!=peer_address.version:
-                family="IPv4" if peer_address.version==4 else "IPv6"
-                raise ValueError(f"IP مقصد برای تونل {tunnel_id} باید از نوع {family} باشد")
-            if address_ip!=peer_address:
-                routed=False
-                with db() as c:route_rows=[json.loads(r['config']) for r in c.execute('SELECT config FROM routing_links')]
-                for link in route_rows:
-                    if link.get('tunnel_id')!=tunnel_id:continue
-                    if server_id==link.get('server_a'):peer_config=link.get('config_b',{})
-                    elif server_id==link.get('server_b'):peer_config=link.get('config_a',{})
-                    else:continue
-                    if any(address_ip in ipaddress.ip_network(prefix,strict=True) for prefix in peer_config.get('networks',[]) if ipaddress.ip_network(prefix,strict=True).version==address_ip.version):
-                        routed=True;break
-                if not routed:raise ValueError(f"{address_ip} is not advertised by the far end of an active BGP/OSPF link on tunnel {tunnel_id}")
             address=str(address_ip)
-        else:address=str(peer_address)
+        else:
+            try:peer_address=ipaddress.ip_interface(remote).ip
+            except ValueError as e:raise ValueError(f"IP داخلی peer در تونل {tunnel_id} نامعتبر است") from e
+            if requested:
+                try:address_ip=ipaddress.ip_address(requested)
+                except ValueError as e:raise ValueError(f"IP مقصد برای تونل {tunnel_id} نامعتبر است") from e
+                if address_ip.version!=peer_address.version:
+                    family="IPv4" if peer_address.version==4 else "IPv6"
+                    raise ValueError(f"IP مقصد برای تونل {tunnel_id} باید از نوع {family} باشد")
+                if address_ip!=peer_address:
+                    routed=False
+                    with db() as c:route_rows=[json.loads(r['config']) for r in c.execute('SELECT config FROM routing_links')]
+                    for link in route_rows:
+                        if link.get('tunnel_id')!=tunnel_id:continue
+                        if server_id==link.get('server_a'):peer_config=link.get('config_b',{})
+                        elif server_id==link.get('server_b'):peer_config=link.get('config_a',{})
+                        else:continue
+                        if any(address_ip in ipaddress.ip_network(prefix,strict=True) for prefix in peer_config.get('networks',[]) if ipaddress.ip_network(prefix,strict=True).version==address_ip.version):
+                            routed=True;break
+                    if not routed:raise ValueError(f"{address_ip} is not advertised by the far end of an active BGP/OSPF link on tunnel {tunnel_id}")
+                address=str(address_ip)
+            else:address=str(peer_address)
         backends.append({"tunnel_id":tunnel_id,"address":address,"weight":weight,"role":role})
     if algorithm=="first" and sum(1 for backend in backends if backend["role"]=="primary")!=1:
         raise ValueError("در حالت Failover دقیقاً یک مسیر را Primary انتخاب کن؛ بقیه مسیرها Backup هستند")
@@ -1621,6 +1628,8 @@ def server(host,port):
                     response=privileged({"op":"profile","group":"network","id":native,"action":"status"} if native else {"op":"status","id":ident})
                     if "error" in response:return self.send(502,{"error":response["error"],"item":item})
                     item["live"]={"active":"ActiveState=active" in response.get("output","")} if native else response["status"]
+                    tun_name=item.get('metadata',{}).get('tun_name')
+                    item['tun_addresses']=interface_ip_addresses(tun_name) if tun_name else []
                     with MONITOR_LOCK:health=MONITOR_TUNNELS.get(ident)
                     item["health"]=health if health is not None else tunnel_health(item)
                     return self.send(200,item)

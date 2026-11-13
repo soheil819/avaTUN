@@ -1,3 +1,7 @@
+## avaTUN 0.1.66
+
+- Include Backhaul TUN/IPX links in the forwarder when their peer address is known or can be supplied, and validate that the backend route uses the selected IPX interface.
+
 ## avaTUN 0.1.65
 
 - Prefer free L2TPv3 UDP ports outside each server's ephemeral range, and fall back to an unbound port when the OS reserves the entire usable range.
