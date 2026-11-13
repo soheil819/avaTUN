@@ -1,3 +1,8 @@
+## avaTUN 0.1.51
+
+- Hide the panel public IP field unless the central panel server is a tunnel endpoint, and leave it blank until supplied.
+- Keep Telegram server, tunnel, and resource status in native message widgets; log Telegram's reason when widget delivery falls back.
+
 ## avaTUN 0.1.50
 
 - Ignore stale TUN/TCP peer addresses in Backhaul IPX requests; IPX uses only the configured outer IP addresses.

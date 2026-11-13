@@ -171,7 +171,8 @@ class Telegram:
             # The request URL contains a credential, so never propagate network exceptions.
             raise RuntimeError('Telegram connection failed') from None
         if not result.get('ok'):
-            raise RuntimeError('Telegram rejected ' + method)
+            detail = str(result.get('description') or '')[:200]
+            raise RuntimeError('Telegram rejected ' + method + (': ' + detail if detail else ''))
         return result['result']
 
     def send(self, user_id, text, keyboard=None):
@@ -553,7 +554,8 @@ class Bot:
             rows.append([self.button(user_id, 'فهرست متنی سرورها', 'servers-text'),
                          self.button(user_id, 'منوی اصلی', 'home')])
             self.send(user_id, 'برای جزئیات و عملیات مدیریتی، سرور را انتخاب کن:', rows)
-        except RuntimeError:
+        except RuntimeError as error:
+            logging.warning('Server message widget unavailable (%s)', str(error)[:240])
             rows = [[self.button(user_id, item['id'] + ' · ' + item['host'], 'server', server_id=item['id'])]
                     for item in entries[page * 8:page * 8 + 8]]
             rows += self.pagination(user_id, 'servers-text', page, len(entries))
@@ -635,9 +637,10 @@ class Bot:
                 'chat_id': user_id, 'html': RESOURCE_WIDGET_HTML,
                 'chat_data': json.dumps(state, ensure_ascii=False, separators=(',', ':')),
                 'caption': '📈 پایش زندهٔ منابع سرورها', 'allow_queries': True})
-        except RuntimeError:
+        except RuntimeError as error:
             # Keep the resource command usable if Telegram's widget feature is
             # unavailable for this bot or client/API deployment.
+            logging.warning('Resource message widget unavailable (%s)', str(error)[:240])
             self.send(user_id, 'ویجت منابع در دسترس نیست؛ گزارش متنی منابع:',
                       [[self.button(user_id, '🔄 تلاش دوباره', 'hardware'), self.button(user_id, 'منوی اصلی', 'home')]])
             self.send(user_id, '\n\n'.join(hardware_report(item) for item in items))
@@ -656,7 +659,8 @@ class Bot:
             rows = [[self.button(user_id, '🔎 ' + ident, 'tunnel', tunnel_id=ident)] for ident in entries[:16]]
             rows.append([self.button(user_id, 'فهرست کامل', 'tunnels'), self.button(user_id, 'منوی اصلی', 'home')])
             self.send(user_id, 'برای دیدن جزئیات یا عملیات، تونل را انتخاب کن:', rows)
-        except RuntimeError:
+        except RuntimeError as error:
+            logging.warning('Tunnel message widget unavailable (%s)', str(error)[:240])
             self.tunnels(user_id)
 
     def haproxy_widget(self, user_id, server_id='local'):
