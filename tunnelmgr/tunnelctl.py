@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.3"
+APP_VERSION="0.2.4"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -855,11 +855,24 @@ def native_profile_config(server_id,ident,servers):
     if not config:raise ValueError('could not read native tunnel config on '+server_id)
     return config
 
-def allocate_pair_resources(snapshots,prefix='tn'):
-    interfaces=set();networks=set()
+def allocate_pair_interface(snapshots,prefix='tn'):
+    interfaces=set()
     for snapshot in snapshots:
         network=snapshot.get('network') or {}
         interfaces.update(str(name) for name in network.get('interfaces',[]))
+        for item in snapshot.get('items',[]):
+            metadata=item.get('metadata') or {}
+            name=metadata.get('tun_name') or metadata.get('interface')
+            if name:interfaces.add(str(name))
+    for _ in range(128):
+        candidate=prefix+secrets.token_hex(6)
+        if len(candidate)<=15 and candidate not in interfaces:return candidate
+    raise RuntimeError('Could not allocate a free tunnel interface name on both servers.')
+
+def allocate_pair_resources(snapshots,prefix='tn'):
+    networks=set()
+    for snapshot in snapshots:
+        network=snapshot.get('network') or {}
         for value in network.get('networks',[]):
             try:
                 item=ipaddress.ip_network(value,strict=False)
@@ -867,8 +880,6 @@ def allocate_pair_resources(snapshots,prefix='tn'):
             except ValueError:continue
         for item in snapshot.get('items',[]):
             metadata=item.get('metadata') or {}
-            name=metadata.get('tun_name') or metadata.get('interface')
-            if name:interfaces.add(str(name))
             for field in ('tun_local','tun_remote'):
                 value=metadata.get(field)
                 if not value:continue
@@ -876,12 +887,7 @@ def allocate_pair_resources(snapshots,prefix='tn'):
                     iface=ipaddress.ip_interface(value)
                     if iface.version==4:networks.add(iface.network)
                 except ValueError:continue
-    interface=None
-    for _ in range(128):
-        candidate=prefix+secrets.token_hex(6)
-        if len(candidate)<=15 and candidate not in interfaces:
-            interface=candidate;break
-    if not interface:raise RuntimeError('Could not allocate a free tunnel interface name on both servers.')
+    interface=allocate_pair_interface(snapshots,prefix)
     pools=tuple(ipaddress.IPv4Network(value) for value in ('10.240.0.0/12','172.30.0.0/15','192.168.240.0/20'))
     subnet=None
     for _ in range(1024):
@@ -1053,9 +1059,13 @@ def create_wireguard_pair(data):
         local=ipaddress.ip_interface(data.get("inner_local",""));peer=ipaddress.ip_interface(data.get("inner_peer",""))
     except ValueError as exc:raise ValueError("WireGuard needs valid public endpoint and inner IP addresses") from exc
     if local.version!=peer.version or local.ip==peer.ip or local.network!=peer.network:raise ValueError("peer IPs must be distinct addresses in the same subnet")
-    existing={}
+    existing={};snapshots={};allocated_interface=None
     for sid in (a_id,b_id):
-        items=rows() if sid=="local" else server_remote(servers[sid],{"op":"list"}).get("items",[])
+        if data.get("action")=="update":
+            items=rows() if sid=="local" else server_remote(servers[sid],{"op":"list"}).get("items",[])
+        else:
+            snapshots[sid]=allocation_snapshot(sid,servers)
+            items=snapshots[sid].get("items",[])
         existing[sid]=items
         for item in items:
             meta=item.get("metadata",{})
@@ -1071,9 +1081,12 @@ def create_wireguard_pair(data):
         if not exists_a or not exists_b:raise ValueError("both WireGuard peers must exist before editing")
         old={a_id:(tunnel_config(ident) if a_id=="local" else server_remote(servers[a_id],{"op":"config","id":ident})),
              b_id:(tunnel_config(ident) if b_id=="local" else server_remote(servers[b_id],{"op":"config","id":ident}))}
+        interface_a=old[a_id].get("interface")
+        interface_b=old[b_id].get("interface")
+        if not interface_a or not interface_b:raise ValueError("WireGuard peers have no saved tunnel interface")
         base={k:v for k,v in data.items() if k in ("mtu","keepalive")}
-        config_a={**old[a_id],"id":ident,"transport":"wireguard","mode":"peer","interface":data.get("interface",old[a_id].get("interface","wg0")),"outer_peer":hosts[b_id],"inner_local":str(local),"inner_peer":str(peer),"listen_port":port,"endpoint_port":port,**base}
-        config_b={**old[b_id],"id":ident,"transport":"wireguard","mode":"peer","interface":data.get("peer_interface",old[b_id].get("interface","wg1")),"outer_peer":hosts[a_id],"inner_local":str(peer),"inner_peer":str(local),"listen_port":port,"endpoint_port":port,**base}
+        config_a={**old[a_id],"id":ident,"transport":"wireguard","mode":"peer","interface":interface_a,"outer_peer":hosts[b_id],"inner_local":str(local),"inner_peer":str(peer),"listen_port":port,"endpoint_port":port,**base}
+        config_b={**old[b_id],"id":ident,"transport":"wireguard","mode":"peer","interface":interface_b,"outer_peer":hosts[a_id],"inner_local":str(peer),"inner_peer":str(local),"listen_port":port,"endpoint_port":port,**base}
         updates=[(a_id,config_a),(b_id,config_b)];done=[]
         try:
             for sid,cfg in updates:
@@ -1089,6 +1102,7 @@ def create_wireguard_pair(data):
             raise
         return {"ok":True,"id":ident,"transport":"wireguard","servers":[a_id,b_id],"updated":True,"udp_port":port}
     if exists_a or exists_b:raise ValueError("tunnel id already exists on one of the selected servers")
+    allocated_interface=allocate_pair_interface([snapshots[a_id],snapshots[b_id]],prefix="wg")
     wg=shutil.which("wg")
     if not wg:raise RuntimeError("wireguard-tools must be installed on the panel server")
     def output(*args):
@@ -1099,8 +1113,8 @@ def create_wireguard_pair(data):
     pub_b=subprocess.run([wg,"pubkey"],input=priv_b+"\n",capture_output=True,text=True,check=True,timeout=5).stdout.strip()
     psk=output("genpsk")
     base={k:v for k,v in data.items() if k in ("mtu","keepalive")}
-    config_a={"id":ident,"transport":"wireguard","mode":"peer","interface":data.get("interface","wg0"),"outer_peer":hosts[b_id],"inner_local":str(local),"inner_peer":str(peer),"private_key":priv_a,"peer_public_key":pub_b,"preshared_key":psk,"listen_port":port,"endpoint_port":port,**base}
-    config_b={"id":ident,"transport":"wireguard","mode":"peer","interface":data.get("peer_interface","wg1"),"outer_peer":hosts[a_id],"inner_local":str(peer),"inner_peer":str(local),"private_key":priv_b,"peer_public_key":pub_a,"preshared_key":psk,"listen_port":port,"endpoint_port":port,**base}
+    config_a={"id":ident,"transport":"wireguard","mode":"peer","interface":allocated_interface,"outer_peer":hosts[b_id],"inner_local":str(local),"inner_peer":str(peer),"private_key":priv_a,"peer_public_key":pub_b,"preshared_key":psk,"listen_port":port,"endpoint_port":port,**base}
+    config_b={"id":ident,"transport":"wireguard","mode":"peer","interface":allocated_interface,"outer_peer":hosts[a_id],"inner_local":str(peer),"inner_peer":str(local),"private_key":priv_b,"peer_public_key":pub_a,"preshared_key":psk,"listen_port":port,"endpoint_port":port,**base}
     endpoints=[(a_id,config_a),(b_id,config_b)]
     created=[]
     try:

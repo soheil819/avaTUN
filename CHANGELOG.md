@@ -1,3 +1,7 @@
+## avaTUN 0.2.4
+
+- Allocate a random free WireGuard interface after checking both servers, use it on both peers, and preserve saved interfaces when editing. The form no longer accepts a physical interface name for WireGuard.
+
 ## avaTUN 0.2.3
 
 - Disable StrongSwan `start_action` for generated IPsec children because the network profile explicitly invokes `swanctl --initiate`; this prevents a duplicate CHILD_SA request from tearing down an otherwise established tunnel.
