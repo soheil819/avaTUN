@@ -1,3 +1,7 @@
+## avaTUN 0.1.61
+
+- Include the retrying `ip` JSON helper in delegated code so the central panel can read allocation snapshots from managed servers.
+
 ## avaTUN 0.1.60
 
 - Retry transient `ip` network-snapshot failures and include the command's stderr when the address or route dump still fails.
