@@ -1,3 +1,7 @@
+## avaTUN 0.1.62
+
+- Allow `AF_NETLINK` in the panel service sandbox so IP address and route inspection works inside systemd.
+
 ## avaTUN 0.1.61
 
 - Include the retrying `ip` JSON helper in delegated code so the central panel can read allocation snapshots from managed servers.
