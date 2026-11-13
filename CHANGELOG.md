@@ -1,3 +1,7 @@
+## avaTUN 0.2.7
+
+- Add a manual per-tunnel iperf3 speed test button in the tunnel list; rerunning updates the saved bidirectional throughput result.
+
 ## avaTUN 0.2.6
 
 - Install iperf3 with the server installer and automatically measure TCP throughput in both directions after tunnel creation or reconfiguration.
