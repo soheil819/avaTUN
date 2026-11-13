@@ -1,3 +1,8 @@
+## avaTUN 0.1.58
+
+- Prepare the kernel modules used by WireGuard, TUN/OpenVPN, GRE, IPIP, GRETAP, Geneve, VXLAN, SIT, FoU, L2TPv3, and IPsec/ESP during installation and after reboot.
+- Load each tunnel type's required modules before starting its native profile.
+
 ## avaTUN 0.1.57
 
 - Load required FoU/IP tunnel modules before starting native FoU profiles and configure them for automatic loading after reboot.

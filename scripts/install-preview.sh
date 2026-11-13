@@ -123,11 +123,30 @@ command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
 command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
+command -v modprobe >/dev/null 2>&1 || PACKAGES="$PACKAGES kmod"
 if [ -n "$PACKAGES" ]; then
     command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES
 fi
+
+# Preload and persist kernel modules used by the tunnel types exposed in the
+# panel. Only record modules supported by the running kernel; kernels may build
+# features in or ship them as loadable modules.
+install -d -o root -g root -m 0755 /etc/modules-load.d
+modules_file=/etc/modules-load.d/avatun-tunnels.conf
+: > "$modules_file"
+for module in tun wireguard ip_gre ipip geneve vxlan sit fou l2tp_core l2tp_eth l2tp_ip xfrm_user esp4 esp6 xfrm4_tunnel xfrm6_tunnel; do
+    if modprobe --dry-run "$module" >/dev/null 2>&1; then
+        printf '%s\n' "$module" >> "$modules_file"
+        if ! modprobe "$module" >/dev/null 2>&1; then
+            echo "Warning: kernel module $module could not be loaded now; it will be retried when its tunnel starts." >&2
+        fi
+    else
+        echo "Warning: kernel module $module is unavailable for $(uname -r); related tunnel types may not start." >&2
+    fi
+done
+chmod 0644 "$modules_file"
 getent passwd tunnelmgr >/dev/null 2>&1 || useradd --system --home-dir /var/lib/tunnelmgr --create-home --shell /usr/sbin/nologin tunnelmgr
 install -d -o root -g root -m 0755 /opt/tunnelmgr/tunnelmgr /opt/tunnelmgr/web /etc/systemd/system
 install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets
@@ -151,15 +170,6 @@ install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service
 install -d -o tunnelmgr -g tunnelmgr -m 0700 /var/lib/tunnelmgr
 install -d -o root -g root -m 0700 /etc/tunnelmgr/network
-install -d -o root -g root -m 0755 /etc/modules-load.d
-cat > /etc/modules-load.d/avatun-tunnels.conf <<'EOF'
-fou
-ipip
-ip_gre
-sit
-EOF
-chmod 0644 /etc/modules-load.d/avatun-tunnels.conf
-for module in fou ipip ip_gre sit; do modprobe "$module" >/dev/null 2>&1 || true; done
 # Paths listed in tunnelmgr-privd.service ReadWritePaths must exist before systemd starts it.
 install -d -o root -g root -m 0755 /etc/backhaul /var/lib/backhaul-manager /etc/swanctl/conf.d
 install -d -o root -g root -m 0755 /var/lib/letsencrypt /var/log/letsencrypt /var/cache/letsencrypt

@@ -14,7 +14,17 @@ from routing import validate as validate_routing
 
 def ensure_kernel_modules(cfg):
     kind=cfg.get('kind')
-    modules={'ipip-fou':('fou','ipip'),'gre-fou':('fou','ip_gre'),'sit-fou':('fou','sit')}.get(kind,())
+    modules={
+        'wireguard':('wireguard',),'openvpn':('tun',),'openconnect':('tun',),
+        'gre':('ip_gre',),'gretap':('ip_gre',),'gre-fou':('fou','ip_gre'),
+        'ipip':('ipip',),'ipip-fou':('fou','ipip'),
+        'geneve':('geneve',),'vxlan':('vxlan',),
+        'sit-6to4':('sit',),'sit-isatap':('sit',),'sit-fou':('fou','sit'),
+        'l2tpv3':('l2tp_core','l2tp_eth','l2tp_ip'),
+        'ipsec-ikev2':('xfrm_user','esp4','esp6','xfrm4_tunnel','xfrm6_tunnel'),
+        'ipsec-esp-udp':('xfrm_user','esp4','esp6','xfrm4_tunnel','xfrm6_tunnel'),
+        'esp':('xfrm_user','esp4','esp6','xfrm4_tunnel','xfrm6_tunnel'),
+    }.get(kind,())
     for module in modules:
         result=subprocess.run(['/usr/sbin/modprobe',module],capture_output=True,text=True,timeout=15)
         if result.returncode:
