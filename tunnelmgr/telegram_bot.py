@@ -160,13 +160,18 @@ class Telegram:
             with self.opener.open(request, timeout=timeout) as response:
                 result = json.load(response)
         except urllib.error.HTTPError as error:
+            try:
+                payload = json.load(error)
+            except (ValueError, AttributeError):
+                payload = {}
+            detail = str(payload.get('description') or '')[:200]
             if error.code == 429:
                 try:
-                    delay = float(json.load(error).get('parameters', {}).get('retry_after', 5))
+                    delay = float(payload.get('parameters', {}).get('retry_after', 5))
                 except (ValueError, TypeError, AttributeError):
                     delay = 5
                 time.sleep(min(max(delay, 1), 60))
-            raise RuntimeError('Telegram HTTP ' + str(error.code)) from None
+            raise RuntimeError('Telegram HTTP ' + str(error.code) + (': ' + detail if detail else '')) from None
         except (OSError, ValueError):
             # The request URL contains a credential, so never propagate network exceptions.
             raise RuntimeError('Telegram connection failed') from None
@@ -909,8 +914,8 @@ class Bot:
         if action == 'update-check':
             status = self.panel.check_updates()
             if status.get('update_available'):
-                self.send(user_id, f"نسخهٔ جدید avaTUN پیدا شد: {status.get('current_version')} → {status.get('latest_version')}\nبرای نصب، تأیید کن.",
-                          [[self.button(user_id, '⬆️ تأیید و نصب', 'confirm-app-update', commit=status.get('latest_commit'))],
+                self.send(user_id, f"نسخهٔ جدید avaTUN پیدا شد: {status.get('current_version')} → {status.get('latest_version')}\nبرای نصب، دکمهٔ نصب را بزن.",
+                          [[self.button(user_id, '⬆️ نصب نسخهٔ جدید', 'execute-app-update', commit=status.get('latest_commit'))],
                            [self.button(user_id, 'لغو', 'home')]])
             elif status.get('state') == 'installing':
                 self.send(user_id, 'به‌روزرسانی avaTUN در حال اجراست.')
@@ -1203,7 +1208,7 @@ class Bot:
                 self.state.deliver(self.telegram, self.scrub)
             except (OSError, ValueError, KeyError, RuntimeError) as error:
                 self.set_status('retrying', type(error).__name__)
-                logging.warning('Bot cycle failed (%s)', type(error).__name__)
+                logging.warning('Bot cycle failed (%s: %s)', type(error).__name__, str(error)[:240])
                 time.sleep(5)
 
 

@@ -1,3 +1,10 @@
+## avaTUN 0.1.52
+
+- Read native tunnel interface names from the native form so the Backhaul `eth0` field cannot be used for GRE/IPIP devices.
+- Validate Backhaul IPX outer IPv4 addresses before submitting the tunnel and reject CIDR suffixes with a clear form error.
+- Reject occupied native tunnel interface names, avoid Apport crash-report noise, and include the actual `ip`/`tc` error in the service journal.
+- Make the panel update action always visible and have one click check GitHub before offering installation; simplify the Telegram update confirmation to one install action.
+
 ## avaTUN 0.1.51
 
 - Hide the panel public IP field unless the central panel server is a tunnel endpoint, and leave it blank until supplied.

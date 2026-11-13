@@ -9,10 +9,14 @@ import sys
 import zlib
 
 def run(*args):
-    subprocess.run(['/usr/sbin/ip', *args], check=True)
+    result=subprocess.run(['/usr/sbin/ip', *args],capture_output=True,text=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or 'ip command failed')
 
 def run_tc(*args):
-    subprocess.run(['/usr/sbin/tc', *args], check=True)
+    result=subprocess.run(['/usr/sbin/tc', *args],capture_output=True,text=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or 'tc command failed')
 
 def remove_fou(kind, port):
     proto={'gre-fou':47,'ipip-fou':4,'sit-fou':41}[kind]
@@ -62,6 +66,8 @@ def apply(profile, up, profile_name=None):
             if sit_local==sit_peer:raise ValueError('SIT outer endpoints must differ')
             name=shared_sit_name(sit_local,sit_peer)
         else:name=iface(profile['interface'])
+        if not sit_shared and pathlib.Path('/sys/class/net',name).exists():
+            raise ValueError(f'network interface {name} already exists; choose an unused tunnel interface')
         created_sit=False
         mirror=iface(profile['mirror_interface']) if kind=='erspan' and profile.get('mirror_interface') else None
         pref=10000+(zlib.crc32((mirror+':'+name).encode())%50000) if mirror else None
@@ -386,4 +392,8 @@ def apply(profile, up, profile_name=None):
 if __name__=='__main__':
     action,name=sys.argv[1:]
     if action not in ('up','down') or not re.fullmatch(r'[a-z0-9_-]{1,48}',name):sys.exit('invalid arguments')
-    apply(json.loads(pathlib.Path('/etc/tunnelmgr/network',name+'.json').read_text()), action=='up', name)
+    try:
+        apply(json.loads(pathlib.Path('/etc/tunnelmgr/network',name+'.json').read_text()), action=='up', name)
+    except Exception as error:
+        print(f'network profile {name} failed: {error}',file=sys.stderr)
+        sys.exit(1)
