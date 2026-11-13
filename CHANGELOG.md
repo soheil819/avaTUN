@@ -1,3 +1,7 @@
+## avaTUN 0.2.8
+
+- Increase separation between tunnel labels for parallel links in the Mesh map.
+
 ## avaTUN 0.2.7
 
 - Add a manual per-tunnel iperf3 speed test button in the tunnel list; rerunning updates the saved bidirectional throughput result.
