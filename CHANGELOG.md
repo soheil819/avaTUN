@@ -1,3 +1,8 @@
+## avaTUN 0.1.56
+
+- Read live addresses from each tunnel interface on both endpoints, show the internal pair on the mesh, and ping the peer IP through that TUN interface.
+- Stop treating Backhaul IPX outer addresses as tunnel health targets; probe IPX using the live TUN peer address instead.
+
 ## avaTUN 0.1.55
 
 - Show Backhaul TUN/IPX outer endpoint IPs on mesh links and probe the configured peer IP from the configured local source IP.

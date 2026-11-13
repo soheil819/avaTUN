@@ -238,11 +238,11 @@ function meshServerArt(kind){
  return `<image class="mesh-node-art" href="/assets/mesh-${kind}.svg" x="-100" y="${layout.y}" width="200" height="${layout.height}" preserveAspectRatio="xMidYMid meet"/>`;
 }
 function meshEdgeInnerStatus(edge){
- const a=edge.items.find(t=>String(t.server_id||'local')===edge.source),b=edge.items.find(t=>String(t.server_id||'local')===edge.target),am=a?.metadata||{},bm=b?.metadata||{},ipx=edge.items.some(t=>t.metadata?.carrier==='tun'&&t.metadata?.encapsulation==='ipx'),left=ipx?(am.local_ip||bm.peer_ip||''):(am.tun_local||bm.tun_remote||''),right=ipx?(bm.local_ip||am.peer_ip||''):(bm.tun_local||am.tun_remote||''),addresses=left&&right?`${left} ⇄ ${right}`:left||right||'',health=edge.items.map(t=>t.health||{}),rtts=health.map(h=>Number(h.rtt_ms)).filter(Number.isFinite),states=health.map(h=>h.state||'');
- let probe=rtts.length?`پینگ ${Math.max(...rtts).toFixed(1)} ms`:states.includes('down')||states.includes('error')?'پینگ ناموفق':states.includes('up')?'پروب برقرار':addresses?'در انتظار پینگ':'پینگ ممکن نیست';
- if(!addresses)probe=`${ipx?'IP بیرونی':'IP داخلی'} ثبت نشده · پینگ ممکن نیست`;
- else if(!(left&&right))probe=`جفت ${ipx?'IP بیرونی':'IP داخلی'} ناقص · پینگ نامطمئن`;
- return {addresses:addresses||`${ipx?'IP بیرونی':'IP داخلی'} ثبت نشده`,probe,kind:ipx?'بیرونی':'داخلی'};
+ const a=edge.items.find(t=>String(t.server_id||'local')===edge.source),b=edge.items.find(t=>String(t.server_id||'local')===edge.target),ah=a?.health||{},bh=b?.health||{},left=ah.tun_local_ip||bh.tun_peer_ip||'',right=bh.tun_local_ip||ah.tun_peer_ip||'',addresses=left&&right?`${left} ⇄ ${right}`:left||right||'',health=edge.items.map(t=>t.health||{}),rtts=health.map(h=>Number(h.rtt_ms)).filter(Number.isFinite),states=health.map(h=>h.state||'');
+ let probe=states.includes('down')||states.includes('error')?'پینگ ناموفق':rtts.length?`پینگ ${Math.max(...rtts).toFixed(1)} ms`:states.includes('up')?'پروب برقرار':addresses?'در انتظار پینگ':'پینگ ممکن نیست';
+ if(!addresses)probe='IP داخلی رابط TUN پیدا نشد · پینگ ممکن نیست';
+ else if(!(left&&right))probe='جفت IP داخلی رابط TUN ناقص · پینگ نامطمئن';
+ return {addresses:addresses||'IP داخلی رابط TUN پیدا نشد',probe,kind:'داخلی'};
 }
 function renderMeshGraph(){
  const svg=$('#meshGraph');if(!svg)return;
@@ -268,7 +268,7 @@ function renderMeshGraph(){
   const key=[edge.source,edge.target].sort().join('|'),idx=pairOffsets.get(key)||0;pairOffsets.set(key,idx+1);const dx=b.x-a.x,dy=b.y-a.y,len=Math.max(1,Math.hypot(dx,dy)),ux=dx/len,uy=dy/len,nx=-uy,ny=ux,off=(idx-(pairCounts.get(key)-1)/2)*38;
   // Cables run between node centers behind the artwork, reaching the visible body despite SVG padding.
   const p1=a,p2=b,midX=(p1.x+p2.x)/2+nx*off*.75,midY=(p1.y+p2.y)/2+ny*off*.75;
-  const healthy=edge.items.some(t=>t.health?.state==='up'),known=edge.items.some(t=>['up','down','error'].includes(t.health?.state)),cls=edge.unresolved?'unknown':healthy?'up':known?'down':'unknown',tone=meshTunnelTone(edge.items),types=[...new Set(edge.items.map(tunnelType))].join(' + '),inner=meshEdgeInnerStatus(edge),detail=`${inner.kind}: ${inner.addresses} · ${inner.probe}`,accessibleLabel=`${edge.id} · ${types} · ${detail}`,c1x=p1.x+(p2.x-p1.x)*.34+nx*off,c1y=p1.y+(p2.y-p1.y)*.34+ny*off,c2x=p1.x+(p2.x-p1.x)*.66+nx*off,c2y=p1.y+(p2.y-p1.y)*.66+ny*off,labelWidth=Math.min(430,Math.max(240,detail.length*6.1+35));
+  const states=edge.items.map(t=>t.health?.state||'unknown'),healthy=states.length>0&&states.every(state=>state==='up'),known=states.some(state=>['up','down','error'].includes(state)),cls=edge.unresolved?'unknown':states.some(state=>['down','error'].includes(state))?'down':healthy?'up':known?'unknown':'unknown',tone=meshTunnelTone(edge.items),types=[...new Set(edge.items.map(tunnelType))].join(' + '),inner=meshEdgeInnerStatus(edge),detail=`${inner.kind}: ${inner.addresses} · ${inner.probe}`,accessibleLabel=`${edge.id} · ${types} · ${detail}`,c1x=p1.x+(p2.x-p1.x)*.34+nx*off,c1y=p1.y+(p2.y-p1.y)*.34+ny*off,c2x=p1.x+(p2.x-p1.x)*.66+nx*off,c2y=p1.y+(p2.y-p1.y)*.66+ny*off,labelWidth=Math.min(430,Math.max(240,detail.length*6.1+35));
   body+=`<g class="mesh-link" data-tunnel-id="${esc(edge.id)}" data-source="${esc(edge.source)}" data-target="${esc(edge.target)}" tabindex="0" role="button" aria-label="ویرایش تونل ${esc(accessibleLabel)}"><title>${esc(accessibleLabel)}</title><path class="mesh-edge ${cls}" d="M ${p1.x} ${p1.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}"/><rect class="mesh-edge-label-bg ${tone}" x="${midX-labelWidth/2}" y="${midY-25}" width="${labelWidth}" height="50" rx="16"/><circle class="mesh-label-status ${cls}" cx="${midX+labelWidth/2-13}" cy="${midY}" r="4"/><text class="mesh-edge-label" x="${midX}" y="${midY-7}"><tspan x="${midX}" dy="0">${esc(types)}</tspan><tspan x="${midX}" dy="17">${esc(detail)}</tspan></text></g>`;
  }
  for(const node of arr){
