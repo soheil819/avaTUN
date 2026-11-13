@@ -1,3 +1,7 @@
+## avaTUN 0.1.50
+
+- Ignore stale TUN/TCP peer addresses in Backhaul IPX requests; IPX uses only the configured outer IP addresses.
+
 ## avaTUN 0.1.49
 
 - Include `github-update.py` in managed-server bootstrap bundles so slave installers receive every file referenced by the installer.

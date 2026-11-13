@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.49"
+APP_VERSION="0.1.50"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -638,6 +638,11 @@ def create_instance(data):
     config={k:v for k,v in data.items() if k not in ("id","direction","server_id","transport","secret_managed")}
     carrier=config.get("carrier","tun")
     if carrier not in ("tcp","tcpmux","xtcpmux","ws","wss","wsmux","wssmux","xwsmux","anytls","tun"):raise ValueError("unsupported Backhaul carrier")
+    if carrier=="tun" and config.get("encapsulation","tcp")=="ipx":
+        # Older clients and hidden form fields can still send the default TCP
+        # peer addresses. Raw IPX uses outer addresses, so discard those fields.
+        for field in ("tun_local","tun_remote","health_port"):
+            config.pop(field,None)
     if carrier=="tun" and config.get("encapsulation","tcp")=="tcp":
         if "tun_local" not in config or "tun_remote" not in config:raise ValueError("Backhaul TUN over TCP requires local and peer tunnel addresses")
         import ipaddress
