@@ -1,3 +1,13 @@
+## avaTUN 0.1.37
+
+- رفع خطای نحوی در اسکریپت پنل که ارسال فرم ورود را متوقف می‌کرد.
+- فرم ورود در حالت خطای جاوااسکریپت هم گذرواژه را داخل نشانی مرورگر نمی‌فرستد.
+
+## avaTUN 0.1.36
+
+- Fixed panel loading when legacy URL query parameters are present; credential query parameters are cleared by redirect.
+- Redacted password, token, and secret query values from API access logs.
+
 ## avaTUN 0.1.35
 
 - Fixed the Telegram live resource widget so CPU, RAM, disk, and swap percentages use the correct metric keys instead of rendering as zero.

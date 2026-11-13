@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.35"
+APP_VERSION="0.1.37"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -1192,28 +1192,36 @@ def server(host,port):
             entry=SESSIONS.get(m.value) if m else None
             return entry if entry and entry[2]>=time.time() else None
         def do_GET(self):
-            if self.path=="/":
+            from urllib.parse import urlsplit, parse_qs
+            request=urlsplit(self.path)
+            route=request.path
+            if route=="/":
+                # Older bookmarks may still append credentials to the panel URL.
+                # Never keep those credentials in the address bar or access logs.
+                query=parse_qs(request.query,keep_blank_values=True)
+                if "password" in query or "username" in query:
+                    self.send_response(302);self.send_header("Location","/#settings");self.send_header("Cache-Control","no-store");self.send_header("Content-Length","0");self.end_headers();return
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/index.html";return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
-            if self.path=="/assets/Yekan.woff2":
+            if route=="/assets/Yekan.woff2":
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/Yekan.woff2";return self.send(200,f.read_bytes(),"font/woff2")
-            if self.path in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg"):
-                f=pathlib.Path(__file__).resolve().parents[1]/"web"/self.path.lstrip("/");return self.send(200,f.read_bytes(),"image/svg+xml")
-            if self.path=="/admin":
+            if route in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg"):
+                f=pathlib.Path(__file__).resolve().parents[1]/"web"/route.lstrip("/");return self.send(200,f.read_bytes(),"image/svg+xml")
+            if route=="/admin":
                 self.send_response(302);self.send_header("Location","/#accounts");self.send_header("Content-Length","0");self.end_headers();return
-            if self.path=="/health":return self.send(200,{"ok":True})
-            if self.path=="/api/v1/auth/session":
+            if route=="/health":return self.send(200,{"ok":True})
+            if route=="/api/v1/auth/session":
                 s=self.session();return self.send(200,{"ok":bool(s),"username":s[0] if s else None,"role":s[1] if s else None})
             role=self.role()
             if not role:return self.send(401,{"error":"sign in required"})
-            if self.path=="/api/v1/settings/panel-tls":
+            if route=="/api/v1/settings/panel-tls":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'panel-tls','id':'panel-tls','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
-            if self.path=="/api/v1/settings/telegram":
+            if route=="/api/v1/settings/telegram":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'telegram-config','id':'telegram-config','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
-            if self.path=="/api/v1/telegram/snapshot":
+            if route=="/api/v1/telegram/snapshot":
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
                     statuses=[dict(item) for item in MONITOR_SERVERS]
@@ -1222,31 +1230,31 @@ def server(host,port):
                 remote=[dict(tunnel,server_id=status["id"]) for status in statuses if status["id"]!="local" for tunnel in status.get("tunnels",[])]
                 servers=[{k:v for k,v in server.items() if k!="identity"}|{"has_identity":bool(server.get("identity"))} for server in server_rows()]
                 return self.send(200,{"servers":servers,"statuses":statuses,"tunnels":[*local,*remote],"resources":resources})
-            if self.path=="/api/v1/routing":
+            if route=="/api/v1/routing":
                 if role not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})
                 return self.send(200,{"items":routing_rows()})
-            if self.path.split("?",1)[0]=="/api/v1/forwards":
+            if route=="/api/v1/forwards":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 from urllib.parse import parse_qs
                 server_id=parse_qs(self.path.partition("?")[2]).get("server_id",["local"])[0]
                 if server_id!="local" and not ID.fullmatch(server_id):return self.send(400,{"error":"invalid server id"})
                 return self.send(200,{"items":forward_rows(),"service":forward_service_status(server_id)})
-            if self.path=="/api/v1/tunnels/snapshot":
+            if route=="/api/v1/tunnels/snapshot":
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
                     statuses=list(MONITOR_SERVERS)
                 local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()]
                 remote=[dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])]
                 return self.send(200,{"items":[*local,*remote]})
-            if self.path=="/api/v1/tunnels":return self.send(200,{"items":rows()})
-            if self.path=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
-            if self.path=="/api/v1/servers/status":
+            if route=="/api/v1/tunnels":return self.send(200,{"items":rows()})
+            if route=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
+            if route=="/api/v1/servers/status":
                 with MONITOR_LOCK:statuses=list(MONITOR_SERVERS)
                 return self.send(200,{"items":statuses})
-            if self.path=="/api/v1/servers/resources":
+            if route=="/api/v1/servers/resources":
                 with MONITOR_LOCK:resources=[dict(item) for item in MONITOR_RESOURCES]
                 return self.send(200,{"items":resources})
-            bits=self.path.strip("/").split("/")
+            bits=route.strip("/").split("/")
             if len(bits)==7 and bits[:3]==["api","v1","servers"] and bits[4]=="tunnels" and bits[6]=="config":
                 if self.role() not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})
                 srv=next((x for x in server_rows() if x["id"]==bits[3]),None)
@@ -1561,7 +1569,10 @@ def server(host,port):
                     return self.send(200,{"ok":True,"id":ident,"operation":op,**response})
                 return self.send(404,{"error":"not found"})
             except Exception as e:return self.send(400,{"error":str(e)})
-        def log_message(self,fmt,*args):print("api:",fmt%args,file=sys.stderr)
+        def log_message(self,fmt,*args):
+            message=fmt%args
+            message=re.sub(r"(?i)(password|token|secret)=([^&\s]+)",r"\1=[redacted]",message)
+            print("api:",message,file=sys.stderr)
     print(f"API on http://{host}:{port} (HTTPS on same port when configured); password authentication enabled",flush=True)
     db().close()
     threading.Thread(target=geoip_monitor_loop,name="geoip-monitor",daemon=True).start()
