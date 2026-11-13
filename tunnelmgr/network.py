@@ -34,8 +34,17 @@ def run_swanctl(*args,timeout=20):
         detail=(result.stderr or result.stdout).strip()
         if 'charon.vici' in detail or "connecting to 'default' URI failed" in detail:
             raise RuntimeError('swanctl cannot connect to StrongSwan VICI (/var/run/charon.vici); ensure charon-systemd.service is active')
-        useful=[line.strip() for line in detail.splitlines() if re.search(r'(error:|failed|cannot|could not|not found|missing)',line,re.I) and not line.lstrip().startswith('--')]
-        raise RuntimeError('swanctl '+ ' '.join(args)+' failed: '+('; '.join(useful[-4:]) or detail[-900:] or 'unknown error'))
+        lines=[line.strip() for line in detail.splitlines() if line.strip() and not line.lstrip().startswith('--')]
+        # swanctl reports optional plugins that are not installed even when the
+        # selected proposal does not use them.  Do not let those warnings hide
+        # the actual IKE or CHILD_SA negotiation result.
+        lines=[line for line in lines if not re.match(r"plugin ['\"].+['\"]: failed to load - .+_plugin_create",line,re.I)]
+        if 'TS_UNACCEPTABLE' in detail:
+            raise RuntimeError('IPsec CHILD_SA was rejected with TS_UNACCEPTABLE: the peer rejected the inner local/peer IP selectors. Check that both tunnel profiles have reversed inner_local and inner_peer addresses and unique IKE identities for this tunnel.')
+        if 'NO_PROPOSAL_CHOSEN' in detail:
+            raise RuntimeError('IPsec IKE proposal was rejected with NO_PROPOSAL_CHOSEN: both peers must have a matching IKE/ESP proposal.')
+        useful=[line for line in lines if re.search(r'(error:|failed|cannot|could not|not found|missing|unacceptable|authentication)',line,re.I)]
+        raise RuntimeError('swanctl '+ ' '.join(args)+' failed: '+('; '.join(useful[-4:]) or '; '.join(lines[-4:]) or 'unknown error'))
     return result
 
 def remove_fou(kind, port):

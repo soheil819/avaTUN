@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.4"
+APP_VERSION="0.2.5"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -984,8 +984,18 @@ def create_native_pair(data):
             if not psk:psk=secrets.token_urlsafe(48)
             config_a['psk']=config_b['psk']=psk
             for cfg in (config_a,config_b):
-                if not cfg.get('local_id'):cfg['local_id']=str(cfg.get('outer_local',''))
-                if not cfg.get('remote_id'):cfg['remote_id']=str(cfg.get('outer_peer',''))
+                outer_local=str(cfg.get('outer_local',''));outer_peer=str(cfg.get('outer_peer',''))
+                # Outer-IP identities are ambiguous when several IKE tunnels
+                # connect the same pair of servers.  strongSwan may select a
+                # different connection's CHILD_SA selectors and answer
+                # TS_UNACCEPTABLE.  Scope default identities to this tunnel;
+                # retain explicitly customized identities.
+                if not cfg.get('local_id') or cfg.get('local_id')==outer_local:
+                    cfg['local_id']=f'{ident}@{outer_local}'
+                if not cfg.get('remote_id') or cfg.get('remote_id')==outer_peer:
+                    cfg['remote_id']=f'{ident}@{outer_peer}'
+            if config_a['local_id']!=config_b['remote_id'] or config_a['remote_id']!=config_b['local_id']:
+                raise ValueError('IPsec peer IKE identities must be inverse on the two tunnel endpoints.')
         if kind=='l2tpv3':
             encap=config_a.get('encap') or config_b.get('encap') or 'udp'
             if encap not in ('udp','ip'):raise ValueError('L2TPv3 encapsulation must be udp or ip.')

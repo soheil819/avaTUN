@@ -122,6 +122,13 @@ command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
 command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
 CHARON_SYSTEMD_STATUS=$(dpkg-query -W -f='${Status}' charon-systemd 2>/dev/null || true)
 case "$CHARON_SYSTEMD_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES charon-systemd" ;; esac
+# IKEv2 operations use swanctl's plugin loader as well as charon-systemd.
+# Minimal images otherwise emit missing ctr/ccm/curl plugin warnings on every
+# initiate; these bundles also make the same algorithms available to charon.
+for package in libstrongswan-extra-plugins libcharon-extra-plugins; do
+    PACKAGE_STATUS=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
+    case "$PACKAGE_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES $package" ;; esac
+done
 command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"

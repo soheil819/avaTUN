@@ -1,3 +1,9 @@
+## avaTUN 0.2.5
+
+- Generate tunnel-specific default IKE identities so multiple IPsec tunnels between the same servers cannot select the wrong CHILD_SA traffic selectors.
+- Install StrongSwan's extra crypto and charon plugin bundles so `ctr`, `ccm`, and `curl` are available on minimal installs and upgrades.
+- Report `TS_UNACCEPTABLE` and `NO_PROPOSAL_CHOSEN` directly, without optional plugin warnings obscuring the cause.
+
 ## avaTUN 0.2.4
 
 - Allocate a random free WireGuard interface after checking both servers, use it on both peers, and preserve saved interfaces when editing. The form no longer accepts a physical interface name for WireGuard.
