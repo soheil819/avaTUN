@@ -69,16 +69,16 @@ fi
 
 VERSION=$(sed -n 's/^APP_VERSION="\([^"]*\)"/\1/p' /opt/tunnelmgr/tunnelmgr/tunnelctl.py | head -n 1)
 printf '\n%s\n' '============================================================'
-printf 'avaTUN %s نصب و اجرا شد.\n' "${VERSION:-}"
-printf 'پنل:      http://%s:8765\n' "$PANEL_HOST"
+printf 'avaTUN %s installed and running.\n' "${VERSION:-}"
+printf 'Panel:    http://%s:8765\n' "$PANEL_HOST"
 if [ -n "$ADMIN_PASSWORD" ]; then
-    printf 'نام کاربری: %s\n' "$ADMIN_USER"
-    printf 'گذرواژه:   %s\n' "$ADMIN_PASSWORD"
+    printf 'Username: %s\n' "$ADMIN_USER"
+    printf 'Password: %s\n' "$ADMIN_PASSWORD"
 else
     EXISTING_USERS=$(runuser -u tunnelmgr -- env TUNNELMGR_HOME=/var/lib/tunnelmgr \
         /usr/bin/python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account list | \
         /usr/bin/python3 -c 'import json,sys; print(", ".join(x["name"] for x in json.load(sys.stdin)))')
-    printf 'حساب‌های قبلی حفظ شدند؛ نام کاربری: %s (گذرواژهٔ فعلی)\n' "$EXISTING_USERS"
+    printf 'Existing accounts were preserved; username(s): %s (use current password).\n' "$EXISTING_USERS"
 fi
 printf '%s\n' '============================================================'
-printf '%s\n' 'اگر فایروال دیتاسنتر فعال است، پورت TCP/8765 را هم در پنل دیتاسنتر باز کنید.'
+printf '%s\n' 'If your provider firewall is enabled, allow TCP port 8765 there as well.'
