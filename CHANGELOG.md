@@ -1,3 +1,7 @@
+## avaTUN 0.2.2
+
+- Detect the resolved StrongSwan library path and add narrowly scoped AppArmor read/map rules for VICI, libstrongswan, and StrongSwan plugins before enabling `strongswan.service`.
+
 ## avaTUN 0.2.1
 
 - Create and update paired IPsec tunnels with the responder endpoint first, then start the initiator after the responder configuration is loaded.

@@ -132,6 +132,28 @@ if [ -n "$PACKAGES" ]; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES
 fi
 
+# On hosts where /usr/lib/ipsec is linked into another StrongSwan installation,
+# AppArmor sees the resolved path and may deny swanctl its libraries/plugins.
+# Allow only the exact VICI/library/plugin files under that resolved directory.
+if [ -f /etc/apparmor.d/usr.sbin.swanctl ] && command -v apparmor_parser >/dev/null 2>&1; then
+    vici_path=$(readlink -f /usr/lib/ipsec/libvici.so.0 2>/dev/null || true)
+    vici_dir=${vici_path%/*}
+    if [ -n "$vici_path" ] && [ "$vici_dir" != /usr/lib/ipsec ]; then
+        case "$vici_dir" in
+            *[!A-Za-z0-9._/-]*) echo 'Unexpected StrongSwan library path; cannot update the swanctl AppArmor profile safely.' >&2; exit 1 ;;
+            *)
+                local_profile=/etc/apparmor.d/local/usr.sbin.swanctl
+                install -d -o root -g root -m 0755 /etc/apparmor.d/local
+                touch "$local_profile"
+                for rule in "$vici_dir/libvici.so* mr," "$vici_dir/libstrongswan.so* mr," "$vici_dir/plugins/*.so mr,"; do
+                    if ! grep -Fqx -- "$rule" "$local_profile"; then printf '%s\n' "$rule" >> "$local_profile"; fi
+                done
+                apparmor_parser -r /etc/apparmor.d/usr.sbin.swanctl
+                ;;
+        esac
+    fi
+fi
+
 # swanctl requires VICI.  Prefer charon-systemd over the legacy starter, which
 # may be installed and active without creating /var/run/charon.vici.
 if systemctl list-unit-files --no-legend 2>/dev/null | awk '$1 == "strongswan.service" { found=1 } END { exit !found }'; then
