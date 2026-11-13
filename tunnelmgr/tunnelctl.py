@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.0"
+APP_VERSION="0.2.1"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -996,7 +996,17 @@ def create_native_pair(data):
                 for field in ('tunnel_id','peer_tunnel_id','session_id','peer_session_id','udp_sport','udp_dport'):
                     if config_a.get(field) in (None,'') and previous[a_id].get(field) is not None:config_a[field]=previous[a_id][field]
                     if config_b.get(field) in (None,'') and previous[b_id].get(field) is not None:config_b[field]=previous[b_id][field]
-        endpoints=((a_id,config_a),(b_id,config_b));attempted=[]
+        endpoints=((a_id,config_a),(b_id,config_b))
+        if kind in ('ipsec-ikev2','ipsec-esp-udp'):
+            # Install the responder's swanctl connection before the initiator
+            # sends its first IKE_SA_INIT.  Otherwise the responder can reject
+            # that packet with NO_PROPOSAL_CHOSEN because no matching IKE
+            # config has been loaded yet.
+            roles={config_a.get('role'),config_b.get('role')}
+            if roles!={'client','server'}:
+                raise ValueError('IPsec peers must have one client and one server role.')
+            endpoints=tuple(sorted(endpoints,key=lambda endpoint:endpoint[1].get('role')=='client'))
+        attempted=[]
         try:
             for sid,config in endpoints:
                 attempted.append(sid)

@@ -1,3 +1,7 @@
+## avaTUN 0.2.1
+
+- Create and update paired IPsec tunnels with the responder endpoint first, then start the initiator after the responder configuration is loaded.
+
 ## avaTUN 0.2.0
 - Fix remote tunnel allocation, resource, network inventory, and MTU requests to call helpers through the imported tunnel manager module.
 
