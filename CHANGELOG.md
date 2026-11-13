@@ -1,3 +1,10 @@
+## avaTUN 0.2.9
+
+- Consolidate Telegram bot navigation into one interactive HTML widget message for overview, servers, tunnels, resources, forwards, reports, audit, and updates.
+- Add server-scoped tunnel and resource views, safer confirmation flows, and in-widget status refreshes.
+- Queue GitHub update checks without blocking Telegram widget queries; run tunnel, forwarding, and panel update operations in the background and publish their result back into the widget.
+- Keep text-based prompts for HAProxy rule creation and editing, where the widget interface has no text-entry field.
+
 ## avaTUN 0.2.8
 
 - Increase separation between tunnel labels for parallel links in the Mesh map.
