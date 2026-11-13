@@ -1,3 +1,7 @@
+## avaTUN 0.1.44
+
+- Fixed Backhaul repair on partially installed servers: when the verified Backhaul core exists but the manager command is missing, installation restores only the missing manager entry point and preserves the existing core, state, tunnel configs, and service units.
+
 ## avaTUN 0.1.40
 
 - هماهنگ‌کردن نقشهٔ «شبکه در یک نگاه» با نقشهٔ Mesh؛ استفاده از تصویرهای SVG سرورها، پس‌زمینه، مسیرهای رنگی و نشان وضعیت یکسان.

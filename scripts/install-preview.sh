@@ -111,15 +111,30 @@ install -o root -g root -m 0755 "$ROOT/vendor/backhaul/scripts/backhaul-manager.
 install -o root -g root -m 0644 "$ROOT/vendor/backhaul/SHA256SUMS" "$ROOT/vendor/backhaul/LICENSE" "$ROOT/vendor/backhaul/THIRD_PARTY.txt" /opt/tunnelmgr/vendor/backhaul/
 
 # Backhaul TUN is shipped as a verified amd64 core and manager. Preserve an
-# existing installation; bootstrap only when both manager and core are absent.
+# existing core and tunnel files; repair a missing manager without replacing
+# the core or touching any existing Backhaul tunnel.
 if [ "$(uname -m)" = x86_64 ]; then
     if [ ! -e /usr/local/bin/backhaul-manager ] && [ ! -e /usr/local/bin/backhaul ]; then
         python3 /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py install \
             --binary /opt/tunnelmgr/vendor/backhaul/bin/backhaul \
             --manifest /opt/tunnelmgr/vendor/backhaul/SHA256SUMS \
             --manifest-entry bin/backhaul
+    elif [ -x /usr/local/bin/backhaul ] && [ ! -e /usr/local/bin/backhaul-manager ]; then
+        # Older/partial installs can have the core but lack the command used by
+        # tunnelmgr-privd. Install only missing manager files and leave the
+        # existing core, state, configs, and units untouched.
+        manager_tmp=$(mktemp /usr/local/bin/.backhaul-manager.XXXXXX)
+        trap 'rm -f "$manager_tmp"' EXIT HUP INT TERM
+        cat > "$manager_tmp" <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py "$@"
+EOF
+        install -o root -g root -m 0755 "$manager_tmp" /usr/local/bin/backhaul-manager
+        rm -f "$manager_tmp"
+        trap - EXIT HUP INT TERM
+        echo 'Repaired missing Backhaul manager; existing core and tunnel files were preserved.'
     elif [ ! -x /usr/local/bin/backhaul-manager ] || [ ! -x /usr/local/bin/backhaul ]; then
-        echo 'WARNING: Existing Backhaul manager/core installation is partial; leaving it unchanged. Backhaul TUN may need manual repair.' >&2
+        echo 'WARNING: Existing Backhaul manager/core installation is partial; preserved existing files.' >&2
     elif [ ! -e /var/lib/backhaul-manager/state.json ]; then
         # Migrate only an exact bundled core with no pre-existing tunnel
         # configs or units. Record the old manager files so its guarded
