@@ -1,3 +1,7 @@
+## avaTUN 0.1.65
+
+- Prefer free L2TPv3 UDP ports outside each server's ephemeral range, and fall back to an unbound port when the OS reserves the entire usable range.
+
 ## avaTUN 0.1.64
 
 - Automatically allocate conflict-free L2TPv3 tunnel/session IDs and UDP ports after inspecting both servers; keep the chosen values while editing.

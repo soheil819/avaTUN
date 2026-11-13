@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.64"
+APP_VERSION="0.1.65"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -901,8 +901,9 @@ def allocate_l2tp_values(snapshots,encap='udp'):
     if encap!='udp':return tunnel_a,tunnel_b,session_a,session_b,None,None
     def free_port(used,network):
         low,high=network.get('udp_ephemeral_range',[32768,60999])
-        candidates=[port for port in range(1024,65536) if port not in used and not int(low)<=port<=int(high)]
-        if not candidates:raise RuntimeError('No free non-ephemeral UDP ports are available for L2TPv3 on both servers.')
+        available=[port for port in range(1024,65536) if port not in used]
+        candidates=[port for port in available if not int(low)<=port<=int(high)] or available
+        if not candidates:raise RuntimeError('No free UDP ports are available for L2TPv3 on both servers.')
         value=secrets.choice(candidates);used.add(value);return value
     port_a=free_port(used_ports[0],snapshots[0].get('network') or {})
     port_b=free_port(used_ports[1],snapshots[1].get('network') or {})
