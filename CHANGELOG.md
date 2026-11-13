@@ -1,3 +1,15 @@
+## avaTUN 0.1.39
+
+- Added a live Telegram server status widget with online state, tunnel count, installed version, service status, selected server details, and 15-second refresh.
+- Renamed the Telegram home buttons to “وضعیت تونل‌ها” and “فورواردر”.
+
+## avaTUN 0.1.38
+
+- Added Telegram live widgets for tunnel health and HAProxy forwarding rules, with periodic refresh and status summaries.
+- Added admin-only HAProxy and TCP port-forward management in Telegram: guided create/edit, listener and backend ports, balancing method, PROXY protocol, health-check options, tunnel pool selection, weights, and primary/backup roles.
+- Added confirmation before deleting a forwarding rule; enable/disable remains a confirmed action. All changes use the panel's validated forwarding API and are recorded in the operation audit.
+- Added `/haproxy` and `/tunnel_list` bot commands and updated the documented Telegram controls.
+
 ## avaTUN 0.1.37
 
 - رفع خطای نحوی در اسکریپت پنل که ارسال فرم ورود را متوقف می‌کرد.

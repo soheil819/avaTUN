@@ -343,6 +343,86 @@ $('prev').onclick=()=>{if(state.p>0)ask(state.p-1)};$('next').onclick=()=>{if(st
 if(TW){ask(state.p);setInterval(()=>{if(TW.isActive&&!busy)ask(state.p)},15000)}
 </script></body></html>'''
 
+TUNNEL_WIDGET_HTML = r'''<!doctype html><html><body><style>
+body{margin:0;padding:10px 12px;color:var(--tg-theme-text-color);font:14px/1.4 sans-serif}.head,.foot{display:flex;justify-content:space-between;align-items:center;gap:8px}.title{font-weight:700;font-size:16px}.hint{color:var(--tg-theme-hint-color);font-size:12px}.list{display:grid;gap:7px;margin-top:9px}.item{background:var(--tg-theme-secondary-bg-color);border-radius:10px;padding:9px}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.name{font-weight:700;overflow-wrap:anywhere}.badge{font-size:11px;white-space:nowrap}.up{color:#25a879}.down{color:#e05d66}.unknown{color:#d99b2b}.sub{font-size:12px;color:var(--tg-theme-hint-color);margin-top:4px}.nav{display:flex;gap:6px;margin-top:9px}.nav button{border:0;border-radius:8px;padding:6px 9px;color:var(--tg-theme-button-text-color);background:var(--tg-theme-button-color);font:inherit}.nav button:disabled{opacity:.45}
+</style><div class="head"><div class="title">وضعیت تونل‌ها</div><span class="hint" id="summary"></span></div><div class="list" id="list"></div><div class="foot"><div class="nav"><button id="prev">قبلی</button><button id="next">بعدی</button><button id="refresh">↻</button></div><span class="hint" id="page"></span></div><script>
+const TW=window.TelegramWidget,$=id=>document.getElementById(id);let s={p:0,n:1,x:[]},busy=false;function draw(){const icons={up:'● برقرار',down:'● قطع',unknown:'● نامشخص'};$('summary').textContent=(s.x||[]).length+' مورد';$('list').innerHTML=(s.x||[]).map(x=>'<div class="item"><div class="row"><span class="name">'+x.id+'</span><span class="badge '+x.state+'">'+(icons[x.state]||icons.unknown)+'</span></div><div class="sub">'+x.type+' · '+x.servers+'</div><div class="sub">'+x.address+' · '+x.latency+'</div></div>').join('')||'<div class="item">تونلی ثبت نشده است.</div>';$('page').textContent=(s.p+1)+' از '+s.n;$('prev').disabled=s.p<=0;$('next').disabled=s.p>=s.n-1}function ask(p){if(!TW||busy)return;busy=true;TW.request('tunnels:'+p).then(v=>{if(v?.result)s=JSON.parse(v.result);draw()}).catch(()=>{}).finally(()=>busy=false)}try{s=JSON.parse(TW.chatData)}catch{}draw();$('prev').onclick=()=>ask(s.p-1);$('next').onclick=()=>ask(s.p+1);$('refresh').onclick=()=>ask(s.p);if(TW){ask(s.p);setInterval(()=>{if(TW.isActive&&!busy)ask(s.p)},15000)}</script></body></html>'''
+
+SERVER_WIDGET_HTML = r'''<!doctype html><html><body><style>
+body{margin:0;padding:10px 12px;color:var(--tg-theme-text-color);font:14px/1.4 sans-serif}.head,.foot,.row{display:flex;justify-content:space-between;align-items:center;gap:8px}.title{font-weight:700;font-size:16px}.hint{color:var(--tg-theme-hint-color);font-size:12px}.list{display:grid;gap:7px;margin-top:9px}.item{background:var(--tg-theme-secondary-bg-color);border-radius:10px;padding:9px}.name{font-weight:700;overflow-wrap:anywhere}.badge{font-size:11px;white-space:nowrap}.up{color:#25a879}.down{color:#e05d66}.unknown{color:#d99b2b}.sub{font-size:12px;color:var(--tg-theme-hint-color);margin-top:4px}.detail{margin-top:7px;padding-top:7px;border-top:1px solid var(--tg-theme-hint-color);font-size:12px}.nav{display:flex;gap:6px;margin-top:9px}.nav button,.detail button{border:0;border-radius:8px;padding:6px 9px;color:var(--tg-theme-button-text-color);background:var(--tg-theme-button-color);font:inherit}.nav button:disabled{opacity:.45}
+</style><div class="head"><div class="title">وضعیت سرورها</div><span class="hint" id="summary"></span></div><div class="list" id="list"></div><div class="foot"><div class="nav"><button id="prev">قبلی</button><button id="next">بعدی</button><button id="refresh">↻</button></div><span class="hint" id="page"></span></div><script>
+const TW=window.TelegramWidget,$=id=>document.getElementById(id);let s={p:0,n:1,x:[]},busy=false;function ask(p,selected=''){if(!TW||busy)return;busy=true;TW.request('servers:'+p+(selected?':'+selected:'')).then(v=>{if(v?.result)s=JSON.parse(v.result);draw()}).catch(()=>{}).finally(()=>busy=false)}function draw(){const icons={up:'● آنلاین',down:'● قطع',unknown:'● نامشخص'};$('summary').textContent=(s.x||[]).length+' سرور';$('list').innerHTML=(s.x||[]).map(x=>'<div class="item"><div class="row"><span class="name">'+x.name+' · '+x.id+'</span><span class="badge '+x.state+'">'+(icons[x.state]||icons.unknown)+'</span></div><div class="sub">'+x.host+' · '+x.tunnels+' تونل · نسخه '+x.version+'</div>'+(x.selected?'<div class="detail">سرویس پنل: '+x.service+' · SSH: '+x.ssh+(x.cpu!==null?' · CPU '+x.cpu+'%':'')+(x.ram!==null?' · RAM '+x.ram+'%':'')+'</div>':'<div class="detail"><button data-id="'+x.id+'">جزئیات</button></div>')+'</div>').join('')||'<div class="item">سروری ثبت نشده است.</div>';$('page').textContent=(s.p+1)+' از '+s.n;$('prev').disabled=s.p<=0;$('next').disabled=s.p>=s.n-1;document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>ask(s.p,b.dataset.id))}try{s=JSON.parse(TW.chatData)}catch{}draw();$('prev').onclick=()=>ask(s.p-1);$('next').onclick=()=>ask(s.p+1);$('refresh').onclick=()=>ask(s.p);if(TW){ask(s.p);setInterval(()=>{if(TW.isActive&&!busy)ask(s.p,s.selected||'')},15000)}</script></body></html>'''
+
+HAPROXY_WIDGET_HTML = r'''<!doctype html><html><body><style>
+body{margin:0;padding:10px 12px;color:var(--tg-theme-text-color);font:14px/1.4 sans-serif}.head,.foot{display:flex;justify-content:space-between;align-items:center;gap:8px}.title{font-weight:700;font-size:16px}.hint{color:var(--tg-theme-hint-color);font-size:12px}.list{display:grid;gap:7px;margin-top:9px}.item{background:var(--tg-theme-secondary-bg-color);border-radius:10px;padding:9px}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.name{font-weight:700;overflow-wrap:anywhere}.badge{font-size:11px;white-space:nowrap}.up{color:#25a879}.down{color:#e05d66}.unknown{color:#d99b2b}.sub{font-size:12px;color:var(--tg-theme-hint-color);margin-top:4px}.nav{display:flex;gap:6px;margin-top:9px}.nav button{border:0;border-radius:8px;padding:6px 9px;color:var(--tg-theme-button-text-color);background:var(--tg-theme-button-color);font:inherit}.nav button:disabled{opacity:.45}
+</style><div class="head"><div class="title">فورواردر · پورت‌فوروارد</div><span class="hint" id="summary"></span></div><div class="list" id="list"></div><div class="foot"><div class="nav"><button id="prev">قبلی</button><button id="next">بعدی</button><button id="refresh">↻</button></div><span class="hint" id="page"></span></div><script>
+const TW=window.TelegramWidget,$=id=>document.getElementById(id);let s={p:0,n:1,x:[],server_id:'local'},busy=false;function draw(){ $('summary').textContent=(s.server_id||'local')+' · '+(s.service?'HAProxy '+s.service:'وضعیت نامشخص');$('list').innerHTML=(s.x||[]).map(x=>'<div class="item"><div class="row"><span class="name">'+x.id+'</span><span class="badge '+(x.enabled?'up':'unknown')+'">'+(x.enabled?'فعال':'متوقف')+'</span></div><div class="sub">'+x.listen+' → پورت '+x.backend_port+' · '+x.algorithm+'</div><div class="sub">'+x.backends+'</div></div>').join('')||'<div class="item">قانونی ثبت نشده است.</div>';$('page').textContent=(s.p+1)+' از '+s.n;$('prev').disabled=s.p<=0;$('next').disabled=s.p>=s.n-1}function ask(p){if(!TW||busy)return;busy=true;TW.request('haproxy:'+(s.server_id||'local')+':'+p).then(v=>{if(v?.result)s=JSON.parse(v.result);draw()}).catch(()=>{}).finally(()=>busy=false)}try{s=JSON.parse(TW.chatData)}catch{}draw();$('prev').onclick=()=>ask(s.p-1);$('next').onclick=()=>ask(s.p+1);$('refresh').onclick=()=>ask(s.p);if(TW){ask(s.p);setInterval(()=>{if(TW.isActive&&!busy)ask(s.p)},15000)}</script></body></html>'''
+
+
+def tunnel_widget_state(snapshot, page):
+    groups = tunnel_groups(snapshot)
+    entries = sorted(groups.items())
+    pages = max(1, (len(entries) + 4) // 5)
+    page = min(max(0, int(page)), pages - 1)
+    selected = entries[page * 5:page * 5 + 5]
+    items = []
+    for ident, endpoints in selected:
+        values = list(endpoints.values())
+        states = [item.get('health', {}).get('state', 'unknown') for item in values]
+        state = 'down' if any(x in ('down', 'error') for x in states) else 'up' if len(values) > 1 and all(x == 'up' for x in states) else 'unknown'
+        kinds = sorted({str(item.get('metadata', {}).get('transport') or item.get('kind') or 'تونل') for item in values})
+        servers = ' ↔ '.join(str(item.get('server_id') or 'local') for item in values)
+        addresses = ' ↔ '.join(str(item.get('metadata', {}).get('tun_local') or '—') for item in values)
+        latency = [item.get('health', {}).get('rtt_ms') for item in values if item.get('health', {}).get('rtt_ms') is not None]
+        items.append({'id': str(ident)[:48], 'state': state, 'type': ' + '.join(kinds)[:70],
+                      'servers': servers[:100], 'address': addresses[:100],
+                      'latency': f'{max(latency):.1f} ms' if latency else '—'})
+    return {'p': page, 'n': pages, 'x': items}
+
+
+def server_widget_state(snapshot, page, selected=''):
+    statuses = {str(item.get('id')): item for item in snapshot.get('statuses', [])}
+    resources = {str(item.get('id')): item for item in snapshot.get('resources', [])}
+    servers = [{'id': 'local', 'host': 'سرور پنل'}, *snapshot.get('servers', [])]
+    groups = tunnel_groups(snapshot)
+    pages = max(1, (len(servers) + 4) // 5)
+    page = min(max(0, int(page)), pages - 1)
+    items = []
+    for server in servers[page * 5:page * 5 + 5]:
+        ident = str(server.get('id', ''))
+        status = statuses.get(ident, {})
+        resource = resources.get(ident, {})
+        metrics = resource.get('resources') or resource
+        count = sum(ident in endpoints for endpoints in groups.values())
+        reachable = status.get('reachable')
+        items.append({'id': ident[:48], 'name': ('سرور مرکزی' if ident == 'local' else str(server.get('name') or server.get('label') or ident))[:64],
+                      'host': str(server.get('host') or server.get('address') or ident)[:80],
+                      'state': 'up' if reachable is True else 'down' if reachable is False else 'unknown',
+                      'tunnels': count, 'version': str(status.get('app_version') or '—')[:24],
+                      'service': 'فعال' if status.get('services') and all(x == 'active' for x in status['services']) else 'بررسی شود',
+                      'ssh': 'در دسترس' if reachable is True else 'قطع' if reachable is False else 'نامشخص',
+                      'cpu': metrics.get('cpu_percent'), 'ram': metrics.get('memory_percent'),
+                      'selected': ident == selected})
+    if selected and not any(item['id'] == selected for item in items):
+        selected = ''
+    return {'p': page, 'n': pages, 'x': items, 'selected': selected}
+
+
+def haproxy_widget_state(result, page):
+    entries = list(result.get('items') or [])
+    pages = max(1, (len(entries) + 5) // 6)
+    page = min(max(0, int(page)), pages - 1)
+    service = result.get('service') or {}
+    items = []
+    for rule in entries[page * 6:page * 6 + 6]:
+        backends = ', '.join(str(x.get('tunnel_id', '')) for x in rule.get('backends', [])) or '—'
+        items.append({'id': str(rule.get('id', ''))[:48], 'enabled': bool(rule.get('enabled', True)),
+                      'listen': str(rule.get('listen_ip', '')) + ':' + str(rule.get('listen_port', '')),
+                      'backend_port': rule.get('backend_port', '—'), 'algorithm': str(rule.get('algorithm', 'leastconn')),
+                      'backends': backends[:120]})
+    return {'p': page, 'n': pages, 'server_id': result.get('server_id', 'local'),
+            'service': 'فعال' if service.get('active') else 'خاموش/نامشخص', 'x': items}
+
 
 def tunnel_groups(snapshot):
     groups = {}
@@ -427,9 +507,10 @@ class Bot:
 
     def home(self, user_id):
         rows = [[self.button(user_id, '📊 نمای کلی', 'status'), self.button(user_id, '🖥 سرورها', 'servers')],
-                [self.button(user_id, '🔗 تونل‌ها', 'tunnels'), self.button(user_id, '📈 منابع', 'hardware')],
-                [self.button(user_id, '⚖️ HAProxy', 'forwards'), self.button(user_id, '📋 گزارش ۲۴ ساعت', 'report')]]
+                [self.button(user_id, '🔗 وضعیت تونل‌ها', 'tunnel-widget'), self.button(user_id, '📈 منابع', 'hardware')],
+                [self.button(user_id, '📋 گزارش ۲۴ ساعت', 'report')]]
         if self.users[user_id] == 'admin':
+            rows.insert(2, [self.button(user_id, '↔️ فورواردر', 'forwards')])
             rows.append([self.button(user_id, '🧾 عملیات اخیر', 'audit')])
         self.send(user_id, 'avaTUN · مدیریت شبکه\nیک بخش را انتخاب کن.', rows)
 
@@ -446,9 +527,25 @@ class Bot:
     def servers(self, user_id, page=0):
         snapshot = self.panel.snapshot()
         entries = [{'id': 'local', 'host': 'سرور مرکزی'}, *snapshot['servers']]
+        state = server_widget_state(snapshot, page)
+        try:
+            self.widget(user_id, SERVER_WIDGET_HTML, state, '🖥 وضعیت سرورها')
+            rows = [[self.button(user_id, item['id'] + ' · ' + item['host'], 'server', server_id=item['id'])]
+                    for item in entries[page * 5:page * 5 + 5]]
+            rows.append([self.button(user_id, 'فهرست متنی سرورها', 'servers-text'),
+                         self.button(user_id, 'منوی اصلی', 'home')])
+            self.send(user_id, 'برای جزئیات و عملیات مدیریتی، سرور را انتخاب کن:', rows)
+        except RuntimeError:
+            rows = [[self.button(user_id, item['id'] + ' · ' + item['host'], 'server', server_id=item['id'])]
+                    for item in entries[page * 8:page * 8 + 8]]
+            rows += self.pagination(user_id, 'servers-text', page, len(entries))
+            self.send(user_id, '🖥 انتخاب سرور', rows)
+
+    def servers_text(self, user_id, page=0):
+        entries = [{'id': 'local', 'host': 'سرور مرکزی'}, *self.panel.snapshot()['servers']]
         rows = [[self.button(user_id, item['id'] + ' · ' + item['host'], 'server', server_id=item['id'])]
                 for item in entries[page * 8:page * 8 + 8]]
-        rows += self.pagination(user_id, 'servers', page, len(entries))
+        rows += self.pagination(user_id, 'servers-text', page, len(entries))
         self.send(user_id, '🖥 انتخاب سرور', rows)
 
     def server(self, user_id, server_id):
@@ -527,6 +624,33 @@ class Bot:
                       [[self.button(user_id, '🔄 تلاش دوباره', 'hardware'), self.button(user_id, 'منوی اصلی', 'home')]])
             self.send(user_id, '\n\n'.join(hardware_report(item) for item in items))
 
+    def widget(self, user_id, html, state, caption):
+        self.telegram.request('sendWidget', {
+            'chat_id': user_id, 'html': html,
+            'chat_data': json.dumps(state, ensure_ascii=False, separators=(',', ':')),
+            'caption': caption, 'allow_queries': True})
+
+    def tunnel_widget(self, user_id):
+        state = tunnel_widget_state(self.panel.snapshot(), 0)
+        try:
+            self.widget(user_id, TUNNEL_WIDGET_HTML, state, '🔗 وضعیت تونل‌ها')
+            entries = sorted(tunnel_groups(self.panel.snapshot()))
+            rows = [[self.button(user_id, '🔎 ' + ident, 'tunnel', tunnel_id=ident)] for ident in entries[:16]]
+            rows.append([self.button(user_id, 'فهرست کامل', 'tunnels'), self.button(user_id, 'منوی اصلی', 'home')])
+            self.send(user_id, 'برای دیدن جزئیات یا عملیات، تونل را انتخاب کن:', rows)
+        except RuntimeError:
+            self.tunnels(user_id)
+
+    def haproxy_widget(self, user_id, server_id='local'):
+        result = self.panel.request('/api/v1/forwards?server_id=' + urllib.parse.quote(server_id, safe=''))
+        result['items'] = [item for item in result.get('items', []) if item.get('server_id', 'local') == server_id]
+        result['server_id'] = server_id
+        state = haproxy_widget_state(result, 0)
+        try:
+            self.widget(user_id, HAPROXY_WIDGET_HTML, state, '↔️ وضعیت فورواردر · ' + server_id)
+        except RuntimeError:
+            self.forwards(user_id, server_id=server_id)
+
     def resource_widget_query(self, query):
         sender = query.get('from', {}).get('id')
         chat = query.get('chat') or {}
@@ -549,14 +673,57 @@ class Bot:
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             logging.warning('Widget query response failed (%s)', type(error).__name__)
 
-    def forwards(self, user_id, page=0):
-        result = self.panel.request('/api/v1/forwards?server_id=local')
-        entries = result['items']
+    def status_widget_query(self, query):
+        sender = query.get('from', {}).get('id')
+        chat = query.get('chat') or {}
+        authorized = (sender in self.users and chat.get('type') == 'private' and chat.get('id') == sender)
+        data = query.get('data', '')
+        response = {'p': 0, 'n': 1, 'x': []}
+        if authorized and isinstance(data, str) and len(data.encode('utf-8')) <= 64:
+            try:
+                tunnel_match = re.fullmatch(r'tunnels:(\d{1,5})', data)
+                server_match = re.fullmatch(r'servers:(\d{1,5})(?::([a-z0-9][a-z0-9_-]{0,47}|local))?', data)
+                haproxy_match = re.fullmatch(r'haproxy:([a-z0-9][a-z0-9_-]{0,47}|local):(\d{1,5})', data)
+                if tunnel_match:
+                    response = tunnel_widget_state(self.panel.snapshot(), int(tunnel_match.group(1)))
+                elif server_match:
+                    response = server_widget_state(self.panel.snapshot(), int(server_match.group(1)), server_match.group(2) or '')
+                elif haproxy_match and self.users.get(sender) == 'admin':
+                    server_id = haproxy_match.group(1)
+                    result = self.panel.request('/api/v1/forwards?server_id=' + urllib.parse.quote(server_id, safe=''))
+                    result['items'] = [item for item in result.get('items', []) if item.get('server_id', 'local') == server_id]
+                    result['server_id'] = server_id
+                    response = haproxy_widget_state(result, int(haproxy_match.group(2)))
+            except (OSError, ValueError, KeyError, RuntimeError):
+                response = {'p': 0, 'n': 1, 'x': [], 'service': 'دریافت ناموفق'}
+        try:
+            self.telegram.request('answerWidgetQuery', {
+                'widget_query_id': query['id'],
+                'data': json.dumps(response, ensure_ascii=False, separators=(',', ':'))})
+        except (OSError, ValueError, KeyError, RuntimeError) as error:
+            logging.warning('Widget query response failed (%s)', type(error).__name__)
+
+    def forwards(self, user_id, page=0, server_id='local'):
+        if self.users.get(user_id) != 'admin':
+            self.send(user_id, 'مدیریت HAProxy فقط برای مدیر فعال است.', [[self.button(user_id, 'منوی اصلی', 'home')]])
+            return
+        snapshot = self.panel.snapshot()
+        servers = [{'id': 'local', 'host': 'سرور مرکزی'}] + snapshot.get('servers', [])
+        if not any(x['id'] == server_id for x in servers):
+            raise PanelError('سرور انتخاب‌شده پیدا نشد.')
+        result = self.panel.request('/api/v1/forwards?server_id=' + urllib.parse.quote(server_id, safe=''))
+        entries = [item for item in result['items'] if item.get('server_id', 'local') == server_id]
         rows = [[self.button(user_id, ('▶️ ' if item.get('enabled', True) else '⏸ ') + item['id'],
                              'forward', rule_id=item['id'], server_id=item.get('server_id', 'local'))]
                 for item in entries[page * 8:page * 8 + 8]]
-        rows += self.pagination(user_id, 'forwards', page, len(entries))
-        self.send(user_id, '⚖️ قوانین HAProxy' if entries else 'قانون پورت‌فوروارد ثبت نشده است.', rows)
+        rows += self.pagination(user_id, 'forwards', page, len(entries), server_id=server_id)
+        server_row = [self.button(user_id, x['id'] + (' · مرکزی' if x['id'] == 'local' else ' · ' + x.get('host', '')),
+                                  'forwards', server_id=x['id']) for x in servers[:5]]
+        rows.insert(0, server_row)
+        rows.append([self.button(user_id, '📊 ویجت وضعیت فورواردر', 'haproxy-widget', server_id=server_id)])
+        rows.append([self.button(user_id, '＋ قانون جدید', 'forward-new', server_id=server_id)])
+        service = result.get('service') or {}
+        self.send(user_id, f'⚖️ HAProxy · {server_id}\nسرویس: {"فعال" if service.get("active") else "خاموش/نامشخص"}\nقوانین: {len(entries)}', rows)
 
     def forward(self, user_id, rule_id, server_id):
         result = self.panel.request('/api/v1/forwards?server_id=' + urllib.parse.quote(server_id, safe=''))
@@ -576,8 +743,122 @@ class Bot:
             rows.append([self.button(user_id, '⏸ غیرفعال‌کردن' if rule.get('enabled', True) else '▶️ فعال‌کردن',
                                      'confirm-forward', rule_id=rule_id, server_id=server_id,
                                      enabled=not rule.get('enabled', True))])
-        rows.append([self.button(user_id, 'قوانین HAProxy', 'forwards')])
+            rows.append([self.button(user_id, '✏️ ویرایش تنظیمات', 'forward-edit', rule_id=rule_id, server_id=server_id),
+                         self.button(user_id, '🗑 حذف قانون', 'confirm-forward-delete', rule_id=rule_id, server_id=server_id)])
+            rows.append([self.button(user_id, 'قوانین فورواردر', 'forwards', server_id=server_id)])
         self.send(user_id, '\n'.join(lines), rows)
+
+    def prompt(self, user_id, text):
+        self.telegram.request('sendMessage', {'chat_id': user_id, 'text': self.scrub(text),
+                                               'reply_markup': {'force_reply': True, 'selective': True}})
+
+    def wizard_key(self, user_id):
+        return 'forward-wizard:' + str(user_id)
+
+    def wizard_save(self, user_id, draft):
+        self.state.put(self.wizard_key(user_id), draft)
+
+    def wizard_get(self, user_id):
+        return self.state.get(self.wizard_key(user_id))
+
+    def wizard_clear(self, user_id):
+        self.state.put(self.wizard_key(user_id), None)
+
+    def start_forward_wizard(self, user_id, server_id, rule=None):
+        draft = {'server_id': server_id, 'action': 'update' if rule else 'create',
+                 'enabled': rule.get('enabled', True) if rule else True,
+                 'id': rule.get('id', '') if rule else '',
+                 'listen_ip': rule.get('listen_ip', '') if rule else '',
+                 'listen_port': rule.get('listen_port', '') if rule else '',
+                 'backend_port': rule.get('backend_port', '') if rule else '',
+                 'algorithm': rule.get('algorithm', 'leastconn') if rule else 'leastconn',
+                 'proxy_protocol': rule.get('proxy_protocol', 'none') if rule else 'none',
+                 'check_send_proxy': rule.get('check_send_proxy', False) if rule else False,
+                 'shutdown_sessions': rule.get('shutdown_sessions', False) if rule else False,
+                 'backends': rule.get('backends', []) if rule else [], 'step': 'id'}
+        self.wizard_save(user_id, draft)
+        self.wizard_prompt(user_id)
+
+    def wizard_prompt(self, user_id):
+        draft = self.wizard_get(user_id)
+        if not draft:
+            return
+        field = draft.get('step')
+        labels = {'id': ('شناسهٔ قانون', 'مثال: web-entry'),
+                  'listen_ip': ('IP شنود روی ' + draft['server_id'], 'مثال: 0.0.0.0 یا IP همین سرور'),
+                  'listen_port': ('پورت ورودی', 'عدد ۱ تا ۶۵۵۳۵'),
+                  'backend_port': ('پورت مقصد سرویس', 'مثال: 443')}
+        if field in labels:
+            title, hint = labels[field]
+            current = draft.get(field)
+            keep = f'\nمقدار فعلی: {current} · برای نگه‌داشتن «.» بفرست.' if draft['action'] == 'update' else ''
+            self.prompt(user_id, f'{title}\n{hint}{keep}')
+            return
+        if field == 'algorithm':
+            choices = [('کمترین اتصال', 'leastconn'), ('چرخشی', 'roundrobin'), ('بر اساس IP مبدا', 'source'), ('Failover اصلی/پشتیبان', 'first')]
+            self.send(user_id, 'الگوریتم توزیع بار را انتخاب کن:', [[self.button(user_id, label, 'wizard-set', key='algorithm', value=value)] for label, value in choices])
+        elif field == 'proxy':
+            self.send(user_id, 'ارسال PROXY protocol به مقصد؟', [[self.button(user_id, 'خاموش', 'wizard-set', key='proxy_protocol', value='none'), self.button(user_id, 'PROXY v2', 'wizard-set', key='proxy_protocol', value='send-proxy-v2')]])
+        elif field == 'options':
+            self.send(user_id, 'تنظیمات بررسی و اتصال HAProxy را تعیین کن:',
+                      [[self.button(user_id, ('✅ ' if draft['check_send_proxy'] else '▫️ ') + 'ارسال PROXY به health-check', 'wizard-toggle', key='check_send_proxy')],
+                       [self.button(user_id, ('✅ ' if draft['shutdown_sessions'] else '▫️ ') + 'بستن نشست‌ها هنگام down', 'wizard-toggle', key='shutdown_sessions')],
+                       [self.button(user_id, 'ادامهٔ انتخاب مسیرها ←', 'wizard-step', step='backends')]])
+        elif field == 'backends':
+            result = self.panel.request('/api/v1/telegram/snapshot')
+            available = [x for x in result.get('tunnels', []) if x.get('server_id', 'local') == draft['server_id'] and x.get('metadata', {}).get('tun_remote') and x.get('metadata', {}).get('transport') != 'erspan']
+            selected = {x['tunnel_id']: x for x in draft['backends']}
+            rows = []
+            for item in available[:40]:
+                ident = item['id']; backend = selected.get(ident); role = backend.get('role', 'primary') if backend else ''
+                label = ('✅ ' if backend else '▫️ ') + ident + (' · ' + role + ' · وزن ' + str(backend.get('weight', 1)) if backend else '')
+                row = [self.button(user_id, label, 'wizard-backend', tunnel_id=ident)]
+                if backend:
+                    row.append(self.button(user_id, 'وزن +', 'wizard-weight', tunnel_id=ident))
+                rows.append(row)
+            rows.append([self.button(user_id, 'ادامه و بازبینی تنظیمات', 'wizard-step', step='review')])
+            rows.append([self.button(user_id, 'لغو', 'wizard-cancel')])
+            self.send(user_id, 'یک یا چند تونل برای pool مقصد انتخاب کن. با زدن دوباره نقش Primary/Backup عوض می‌شود؛ «وزن +» وزن هر مسیر را تغییر می‌دهد.', rows)
+        elif field == 'review':
+            if not draft['backends']:
+                self.wizard_save(user_id, {**draft, 'step': 'backends'})
+                self.send(user_id, 'برای ادامه حداقل یک تونل مقصد لازم است.', [[self.button(user_id, 'انتخاب تونل‌ها', 'wizard-step', step='backends')]])
+                return
+            summary = (f"{draft['action']} · {draft['id']}\nسرور: {draft['server_id']}\nورودی: {draft['listen_ip']}:{draft['listen_port']}\n"
+                       f"مقصد پورت: {draft['backend_port']} · الگوریتم: {draft['algorithm']}\n"
+                       f"تونل‌ها: {', '.join(x['tunnel_id'] + '/' + x.get('role','primary') + '/w' + str(x.get('weight',1)) for x in draft['backends'])}\n"
+                       f"PROXY: {draft['proxy_protocol']} · health-check PROXY: {'روشن' if draft['check_send_proxy'] else 'خاموش'} · بستن نشست: {'روشن' if draft['shutdown_sessions'] else 'خاموش'}")
+            self.send(user_id, 'بازبینی قانون HAProxy؛ با تأیید پیکربندی روی سرور اعمال می‌شود:\n\n' + summary,
+                      [[self.button(user_id, '✅ اعمال قانون', 'wizard-apply'), self.button(user_id, '↩️ ویرایش مسیرها', 'wizard-step', step='backends')],
+                       [self.button(user_id, 'لغو', 'wizard-cancel')]])
+
+    def wizard_text(self, user_id, text):
+        draft = self.wizard_get(user_id)
+        if not draft or draft.get('step') not in ('id', 'listen_ip', 'listen_port', 'backend_port'):
+            return False
+        field = draft['step']; value = text.strip()
+        if value == '.' and draft['action'] == 'update':
+            value = str(draft.get(field, ''))
+        if field == 'id' and not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,47}', value):
+            self.prompt(user_id, 'شناسه باید با حرف/عدد کوچک شروع شود و فقط حروف کوچک، عدد، _ یا - داشته باشد. دوباره بفرست.')
+            return True
+        if field == 'listen_ip':
+            try:
+                import ipaddress
+                value = str(ipaddress.ip_address(value))
+            except ValueError:
+                self.prompt(user_id, 'IP معتبر وارد کن؛ برای شنود همهٔ IPv4ها 0.0.0.0 را بفرست.')
+                return True
+        if field in ('listen_port', 'backend_port'):
+            if not value.isdigit() or not 1 <= int(value) <= 65535:
+                self.prompt(user_id, 'پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. دوباره بفرست.')
+                return True
+            value = int(value)
+        draft[field] = value
+        draft['step'] = {'id': 'listen_ip', 'listen_ip': 'listen_port', 'listen_port': 'backend_port', 'backend_port': 'algorithm'}[field]
+        self.wizard_save(user_id, draft)
+        self.wizard_prompt(user_id)
+        return True
 
     def report(self, user_id):
         now = time.time()
@@ -596,10 +877,19 @@ class Bot:
         self.send(user_id, '\n'.join(lines))
 
     def dispatch(self, user_id, action, payload):
-        admin_actions = {'confirm-tunnel', 'confirm-forward', 'execute-tunnel', 'execute-forward', 'audit'}
+        admin_actions = {'confirm-tunnel', 'confirm-forward', 'execute-tunnel', 'execute-forward', 'forward',
+                         'confirm-forward-delete', 'execute-forward-delete', 'audit', 'haproxy-widget',
+                         'forward-new', 'forward-start', 'forward-edit', 'wizard-set', 'wizard-toggle', 'wizard-step',
+                         'wizard-backend', 'wizard-weight', 'wizard-apply', 'wizard-cancel'}
         if action in admin_actions and self.users.get(user_id) != 'admin':
             raise PanelError('این عملیات فقط برای مدیر فعال است.')
         if action.startswith('confirm-'):
+            if action == 'confirm-forward-delete':
+                target = payload['rule_id']
+                self.send(user_id, f'قانون {target} روی {payload["server_id"]} و listener آن حذف شود؟',
+                          [[self.button(user_id, '🗑 بله، حذف کن', 'execute-forward-delete', **payload),
+                            self.button(user_id, 'انصراف', 'forward', rule_id=target, server_id=payload['server_id'])]])
+                return
             kind = action.removeprefix('confirm-')
             target = payload.get('tunnel_id') or payload.get('rule_id')
             operation = payload.get('operation') or ('فعال‌کردن' if payload.get('enabled') else 'غیرفعال‌کردن')
@@ -629,11 +919,105 @@ class Bot:
                 raise
             self.state.audit(user_id, 'forward-enabled', target, 'ok')
             self.forward(user_id, target, payload['server_id'])
+        elif action == 'execute-forward-delete':
+            target = payload['rule_id']; server_id = payload['server_id']
+            self.state.audit(user_id, 'forward-delete', target, 'started')
+            try:
+                self.panel.request('/api/v1/forwards', {'action': 'delete', 'id': target, 'server_id': server_id})
+                self.state.audit(user_id, 'forward-delete', target, 'ok')
+                self.forwards(user_id, server_id=server_id)
+            except Exception:
+                self.state.audit(user_id, 'forward-delete', target, 'failed')
+                raise
+        elif action == 'haproxy-widget':
+            self.haproxy_widget(user_id, payload.get('server_id', 'local'))
+        elif action == 'servers-text':
+            self.servers_text(user_id, **payload)
+        elif action == 'forward-new':
+            self.send(user_id, 'سرور اجرای HAProxy برای قانون جدید را انتخاب کن:',
+                      [[self.button(user_id, 'سرور مرکزی · local', 'forward-start', server_id='local')]] +
+                      [[self.button(user_id, x['id'] + ' · ' + x.get('host', ''), 'forward-start', server_id=x['id'])]
+                       for x in self.panel.snapshot().get('servers', [])])
+        elif action == 'forward-start':
+            self.start_forward_wizard(user_id, payload['server_id'])
+        elif action == 'forward-edit':
+            result = self.panel.request('/api/v1/forwards?server_id=' + urllib.parse.quote(payload['server_id'], safe=''))
+            rule = next((x for x in result.get('items', []) if x.get('id') == payload['rule_id']), None)
+            if not rule:
+                raise PanelError('قانون برای ویرایش پیدا نشد.')
+            self.start_forward_wizard(user_id, payload['server_id'], rule)
+        elif action == 'wizard-set':
+            draft = self.wizard_get(user_id)
+            if not draft:
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            key = payload['key']; draft[key] = payload['value']
+            draft['step'] = {'algorithm': 'proxy', 'proxy_protocol': 'options'}[key]
+            self.wizard_save(user_id, draft); self.wizard_prompt(user_id)
+        elif action == 'wizard-toggle':
+            draft = self.wizard_get(user_id)
+            if not draft or payload.get('key') not in ('check_send_proxy', 'shutdown_sessions'):
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            key = payload['key']; draft[key] = not draft[key]
+            self.wizard_save(user_id, draft); self.wizard_prompt(user_id)
+        elif action == 'wizard-step':
+            draft = self.wizard_get(user_id)
+            if not draft:
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            step = payload.get('step')
+            if step not in ('backends', 'review'):
+                raise PanelError('مرحلهٔ فرم نامعتبر است.')
+            draft['step'] = step; self.wizard_save(user_id, draft); self.wizard_prompt(user_id)
+        elif action == 'wizard-backend':
+            draft = self.wizard_get(user_id)
+            if not draft:
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            ident = payload.get('tunnel_id'); current = next((x for x in draft['backends'] if x['tunnel_id'] == ident), None)
+            if current:
+                if current.get('role', 'primary') == 'primary':
+                    current['role'] = 'backup'
+                else:
+                    draft['backends'].remove(current)
+            else:
+                draft['backends'].append({'tunnel_id': ident, 'weight': 1, 'role': 'primary'})
+            self.wizard_save(user_id, draft); self.wizard_prompt(user_id)
+        elif action == 'wizard-weight':
+            draft = self.wizard_get(user_id)
+            if not draft:
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            backend = next((x for x in draft['backends'] if x['tunnel_id'] == payload.get('tunnel_id')), None)
+            if not backend:
+                raise PanelError('ابتدا این تونل را به pool اضافه کن.')
+            weights = (1, 2, 3, 5, 10, 20, 50, 100, 256)
+            current = int(backend.get('weight', 1))
+            backend['weight'] = weights[(weights.index(current) + 1) % len(weights)] if current in weights else 1
+            self.wizard_save(user_id, draft); self.wizard_prompt(user_id)
+        elif action == 'wizard-apply':
+            draft = self.wizard_get(user_id)
+            if not draft or draft.get('step') != 'review':
+                raise PanelError('فرم منقضی شده؛ دوباره شروع کن.')
+            data = {key: draft[key] for key in ('action', 'server_id', 'id', 'listen_ip', 'listen_port',
+                    'backend_port', 'algorithm', 'proxy_protocol', 'check_send_proxy', 'shutdown_sessions',
+                    'backends', 'enabled')}
+            self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'started')
+            try:
+                self.panel.request('/api/v1/forwards', data)
+                self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'ok')
+                self.wizard_clear(user_id)
+                self.send(user_id, 'قانون ذخیره و روی سرور اعمال شد.',
+                          [[self.button(user_id, 'مشاهدهٔ قانون', 'forward', rule_id=data['id'], server_id=data['server_id'])],
+                           [self.button(user_id, 'قوانین فورواردر', 'forwards', server_id=data['server_id'])]])
+            except Exception:
+                self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'failed')
+                raise
+        elif action == 'wizard-cancel':
+            self.wizard_clear(user_id); self.send(user_id, 'ویرایش قانون لغو شد.', [[self.button(user_id, 'فورواردر', 'forwards')]])
         else:
             handlers = {'home': self.home, 'status': self.status, 'servers': self.servers,
+                        'servers-text': self.servers_text,
                         'server': self.server, 'tunnels': self.tunnels, 'tunnel': self.tunnel,
                         'diagnose': self.diagnose, 'hardware': self.hardware, 'forwards': self.forwards,
-                        'forward': self.forward, 'report': self.report, 'audit': self.audit}
+                        'tunnel-widget': self.tunnel_widget, 'forward': self.forward,
+                        'report': self.report, 'audit': self.audit}
             if action not in handlers:
                 raise PanelError('دکمه نامعتبر است؛ منوی اصلی را دوباره باز کن.')
             handlers[action](user_id, **payload)
@@ -646,7 +1030,11 @@ class Bot:
         self.state.put('offset', update_id + 1)
         widget_query = update.get('widget_query')
         if widget_query:
-            self.resource_widget_query(widget_query)
+            kind = str(widget_query.get('data', '')).split(':', 1)[0]
+            if kind == 'resources':
+                self.resource_widget_query(widget_query)
+            else:
+                self.status_widget_query(widget_query)
             return
         query = update.get('callback_query')
         message = query.get('message', {}) if query else update.get('message', {})
@@ -670,9 +1058,13 @@ class Bot:
                 self.dispatch(sender, entry['action'], entry['payload'])
             else:
                 text = message.get('text', '').strip()
+                if self.users.get(sender) == 'admin' and self.wizard_text(sender, text):
+                    return
                 command = text.split()[0].split('@')[0] if text else ''
                 actions = {'/start': 'home', '/help': 'home', '/status': 'status', '/servers': 'servers',
-                           '/tunnels': 'tunnels', '/hardware': 'hardware', '/forwards': 'forwards',
+                           '/tunnels': 'tunnel-widget', '/tunnel-list': 'tunnels', '/tunnel_list': 'tunnels',
+                           '/hardware': 'hardware', '/forwards': 'forwards',
+                           '/haproxy': 'forwards',
                            '/report': 'report', '/audit': 'audit'}
                 self.dispatch(sender, actions.get(command, 'home'), {})
         except (OSError, ValueError, KeyError, RuntimeError) as error:
@@ -725,9 +1117,11 @@ class Bot:
             {'command': 'start', 'description': 'منوی مدیریت avaTUN'},
             {'command': 'status', 'description': 'نمای کلی شبکه'},
             {'command': 'servers', 'description': 'فهرست سرورها'},
-            {'command': 'tunnels', 'description': 'وضعیت و مدیریت تونل‌ها'},
+            {'command': 'tunnels', 'description': 'وضعیت زندهٔ تونل‌ها'},
+            {'command': 'tunnel_list', 'description': 'فهرست متنی تونل‌ها'},
             {'command': 'hardware', 'description': 'منابع و آپلود/دانلود'},
-            {'command': 'forwards', 'description': 'قوانین HAProxy'},
+            {'command': 'forwards', 'description': 'قوانین فورواردر'},
+            {'command': 'haproxy', 'description': 'مدیریت فورواردر'},
             {'command': 'report', 'description': 'گزارش ۲۴ ساعت'}]})
         self.set_status('ready')
         next_monitor = 0

@@ -7,12 +7,18 @@ are sufficient. No inbound Telegram port or webhook is needed.
 
 ## Features
 
-- Private inline menus for overview, servers, CPU/RAM/disk/swap and upload/download.
-- Tunnel details with protocol, internal addresses, MTU, ping and probe errors.
+- Private inline menus for overview, server status, CPU/RAM/disk/swap and upload/download.
+- Live server status widget with online state, tunnel count, installed version, service state, server details, and 15-second refresh.
+- Live tunnel widget with status, protocol, peer addresses and latency, plus
+  per-tunnel details and confirmed two-sided operations.
 - Confirmed start/stop/restart of both tunnel endpoints. A partial failure names
   the failed endpoint. Ambiguous mutations are never retried automatically.
 - Live diagnostics using each endpoint's status/probe API.
-- HAProxy rules, primary/backup backend health, and confirmed enable/disable.
+- HAProxy status widget and rules, primary/backup backend health, and confirmed
+  enable/disable, edit, delete, or create flows. The guided bot form configures
+  listener IP/port, destination port, balancing algorithm, PROXY protocol,
+  health-check PROXY behavior, session shutdown, tunnel backends, their roles,
+  and weights. The panel API validates and applies the final configuration.
   Disabling preserves the rule in the panel database for later re-enabling.
 - Server/tunnel/panel outage alerts after 60 seconds, plus recovery notifications.
 - Resource alerts above 90% for 120 seconds, clearing below 85%.
@@ -70,8 +76,9 @@ message, Telegram cannot deliver private notifications. An existing webhook must
 be removed before polling is activated. The bot reports this configuration error
 and does not delete an existing webhook automatically.
 
-Available commands are `/start`, `/status`, `/servers`, `/tunnels`, `/hardware`,
-`/forwards`, `/report` and `/audit` (admins). Use `journalctl -u avatun-telegram`
+Available commands are `/start`, `/status`, `/servers` (live server widget), `/tunnels` (live tunnel widget),
+`/tunnel_list`, `/hardware`, `/forwards` and `/haproxy`, `/report` and `/audit`
+(admins). HAProxy configuration is administrator-only. Use `journalctl -u avatun-telegram`
 for logs. Credentials are redacted from outgoing error messages and network
 exceptions are logged by type only.
 
