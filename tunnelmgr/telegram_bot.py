@@ -718,8 +718,152 @@ class Bot:
             state.update({'title':'تأیید عملیات','summary':'این تغییر روی سرور اعمال می‌شود'})
         return state
 
+    def widget_fallback(self, user_id, state):
+        lines = [f"avaTUN · {state.get('title', 'مرکز کنترل')}"]
+        if state.get('summary'):
+            lines.append(str(state['summary']))
+        for item in state.get('rows', []):
+            lines.append('')
+            lines.append(str(item.get('title', '')))
+            lines.extend('  ' + str(line) for line in item.get('lines', []))
+            if item.get('badge'):
+                lines.append('  وضعیت: ' + str(item['badge']))
+        if state.get('message'):
+            lines.extend(['', str(state['message'])])
+        context = {'page':state.get('page','overview'),'page_index':int(state.get('p',0)),
+                   'server_id':state.get('server_id','all'),'selected':state.get('selected','')}
+        keyboard = []
+        for item in state.get('rows', []):
+            if item.get('query'):
+                keyboard.append([self.button(user_id, item.get('button') or 'جزئیات',
+                    'widget-fallback-query', query=item['query'], context=context)])
+        actions = [self.button(user_id, item.get('label','بازکردن'), 'widget-fallback-query',
+                               query=item['query'], context=context) for item in state.get('actions', [])]
+        keyboard.extend([actions[i:i+2] for i in range(0, len(actions), 2)])
+        tabs = [('overview','نمای کلی'),('servers','سرورها'),('tunnels','تونل‌ها'),('resources','منابع')]
+        if self.users.get(user_id)=='admin':
+            tabs += [('forwards','فوروارد'),('audit','عملیات'),('update','نسخه')]
+        keyboard.extend([[self.button(user_id,label,'widget-fallback-query',query='nav:'+page,
+                                      context={'page':page,'page_index':0,'server_id':'local' if page=='forwards' else 'all','selected':''})
+                          for page,label in tabs[i:i+2]] for i in range(0,len(tabs),2)])
+        if int(state.get('n',1)) > 1:
+            paging=[]
+            if int(state.get('p',0))>0:
+                paging.append(self.button(user_id,'قبلی','widget-fallback-query',
+                    query=f"page:{state.get('page')}:{int(state.get('p',0))-1}",context=context))
+            if int(state.get('p',0))+1<int(state.get('n',1)):
+                paging.append(self.button(user_id,'بعدی','widget-fallback-query',
+                    query=f"page:{state.get('page')}:{int(state.get('p',0))+1}",context=context))
+            if paging:keyboard.append(paging)
+        keyboard.append([self.button(user_id,'تلاش دوباره برای ویجت','widget-retry')])
+        self.send(user_id,'\n'.join(lines),keyboard)
+
+    def fallback_confirm(self, user_id, text, operation, context):
+        self.send(user_id, text, [[self.button(user_id,'✅ تأیید و اجرا','widget-fallback-execute',
+                                               operation=operation,context=context),
+                                   self.button(user_id,'لغو','widget-fallback-query',
+                                               query='nav:'+context.get('page','overview'),context=context)]])
+
+    def widget_fallback_query(self, user_id, data, context=None):
+        context=context or {'page':'overview','page_index':0,'server_id':'all','selected':''}
+        page=context.get('page','overview');server_id=context.get('server_id','all');selected=context.get('selected','')
+        if data=='refresh':
+            self.show_control_widget(user_id,page,context.get('page_index',0),server_id,selected);return
+        if data.startswith('nav:'):
+            page=data.split(':',1)[1];server_id='local' if page=='forwards' else 'all'
+            if page=='update':
+                self.panel.request('/api/v1/updates',{'action':'check'},timeout=8)
+            self.show_control_widget(user_id,page,0,server_id);return
+        if data.startswith('page:'):
+            _,page,index=data.split(':',2)
+            self.show_control_widget(user_id,page,int(index),server_id,selected);return
+        if data.startswith('open:server:'):
+            selected=data.split(':',2)[2];self.show_control_widget(user_id,'server',0,'local',selected);return
+        if data.startswith('open:tunnel:'):
+            selected=data.split(':',2)[2];self.show_control_widget(user_id,'tunnel',0,'local',selected);return
+        if data.startswith('open:forward:'):
+            _,_,server_id,selected=data.split(':',3);self.show_control_widget(user_id,'forward',0,server_id,selected);return
+        if data.startswith('sp:'):
+            _,code,server_id=data.split(':',2);page={'t':'tunnels','r':'resources','f':'forwards'}.get(code)
+            if not page:raise PanelError('بخش سرور نامعتبر است.')
+            self.show_control_widget(user_id,page,0,server_id);return
+        if data.startswith('server:'):
+            server_id=data.split(':',1)[1]
+            page='forwards' if page=='forwards' else 'tunnels' if page=='tunnels' else 'resources'
+            self.show_control_widget(user_id,page,0,server_id);return
+        if data=='update-check':
+            self.panel.request('/api/v1/updates',{'action':'check'},timeout=8)
+            self.show_control_widget(user_id,'update');return
+        if data.startswith('forward-new:'):
+            if self.users.get(user_id)!='admin':raise PanelError('این عملیات فقط برای مدیر فعال است.')
+            self.start_forward_wizard(user_id,data.split(':',1)[1]);return
+        if data.startswith('edit-forward:'):
+            if self.users.get(user_id)!='admin':raise PanelError('این عملیات فقط برای مدیر فعال است.')
+            self.dispatch(user_id,'forward-edit',{'server_id':server_id,'rule_id':data.split(':',1)[1]});return
+        if data.startswith('confirm:'):
+            if self.users.get(user_id)!='admin':raise PanelError('این عملیات فقط برای مدیر فعال است.')
+            _,action,target=data.split(':',2)
+            if action=='update':
+                status=self.panel.updates()
+                if not status.get('update_available'):raise PanelError('نسخهٔ جدیدی برای نصب موجود نیست.')
+                operation={'kind':'update','target':'panel','commit':status.get('latest_commit')}
+                label=f"نصب avaTUN {status.get('latest_version')}؟"
+            else:
+                endpoints=tunnel_groups(self.panel.snapshot()).get(target)
+                if action not in ('start','stop','restart') or not endpoints or len(endpoints)<2:
+                    raise PanelError('برای این عملیات هر دو سمت تونل باید ثبت شده باشند.')
+                operation={'kind':'tunnel','action':action,'target':target,'expected':sorted(endpoints)}
+                label=f'اجرای {action} برای تونل {target} روی هر دو سمت؟'
+            self.fallback_confirm(user_id,label,operation,context);return
+        if data.startswith('cf:'):
+            if self.users.get(user_id)!='admin':raise PanelError('این عملیات فقط برای مدیر فعال است.')
+            _,action,target=data.split(':',2)
+            result=self.panel.request('/api/v1/forwards?server_id='+urllib.parse.quote(server_id,safe=''))
+            rule=next((x for x in result.get('items',[]) if x.get('id')==target and x.get('server_id','local')==server_id),None)
+            if not rule or action not in ('toggle','delete'):raise PanelError('قانون فورواردر پیدا نشد.')
+            operation={'kind':'forward','action':action,'target':target,'server_id':server_id,
+                       'enabled':bool(rule.get('enabled',True))}
+            self.fallback_confirm(user_id,f'تغییر وضعیت قانون {target} روی {server_id} تأیید می‌شود؟',operation,context);return
+        raise PanelError('دکمهٔ این بخش منقضی شده است؛ /start را دوباره بفرست.')
+
+    def execute_widget_fallback(self, user_id, operation, context=None):
+        context=context or {'page':'overview','server_id':'all','selected':''}
+        kind=operation.get('kind');action=operation.get('action','');target=operation.get('target','')
+        audit_action='github-update' if kind=='update' else 'forward-'+action if kind=='forward' else action
+        self.state.audit(user_id,audit_action,target,'started')
+        try:
+            if kind=='update':
+                status=self.panel.updates()
+                if not status.get('update_available') or status.get('latest_commit')!=operation.get('commit'):
+                    raise PanelError('نسخهٔ GitHub عوض شده؛ دوباره بررسی کن.')
+                self.panel.request('/api/v1/updates',{'action':'apply'},timeout=30)
+                message='درخواست نصب ثبت شد؛ پنل پس از به‌روزرسانی دوباره متصل می‌شود.'
+                page='update';server_id='local';selected=''
+            elif kind=='tunnel':
+                result=self.panel.operate(target,action,operation['expected'])
+                message=' · '.join(result)[:180];page='tunnel';server_id='local';selected=target
+            elif kind=='forward':
+                if action=='toggle':
+                    self.panel.request('/api/v1/forwards',{'action':'set-enabled','id':target,
+                        'server_id':operation['server_id'],'enabled':not operation['enabled']},timeout=15)
+                elif action=='delete':
+                    self.panel.request('/api/v1/forwards',{'action':'delete','id':target,
+                        'server_id':operation['server_id']},timeout=15)
+                else:raise PanelError('عملیات فورواردر نامعتبر است.')
+                message='تغییر فورواردر اعمال شد.';page='forwards';server_id=operation['server_id'];selected=''
+            else:raise PanelError('نوع عملیات ناشناخته است.')
+            self.state.audit(user_id,audit_action,target,'ok')
+            self.show_control_widget(user_id,page,0,server_id,selected)
+            self.send(user_id,message)
+        except Exception as error:
+            self.state.audit(user_id,audit_action,target,'failed')
+            self.send(user_id,'⚠️ عملیات کامل نشد.\n'+self.scrub(error)[:400])
+
     def show_control_widget(self, user_id, page='overview', page_index=0, server_id='all', selected=''):
         state=self.control_widget_state(user_id,page,page_index,server_id,selected)
+        if self.state.get('telegram-widget-disabled',False):
+            self.widget_fallback(user_id,state)
+            return
         storage_key='control-widget:'+str(user_id);saved=self.state.get(storage_key)
         if saved and saved.get('chat_id')==user_id and saved.get('message_id'):
             try:
@@ -734,7 +878,14 @@ class Bot:
                     self.state.put(f'control-view:{user_id}:{int(saved["message_id"])}',{**state,'expires':time.time()+1800})
                     return
                 self.state.put(storage_key,None)
-        result=self.widget(user_id,CONTROL_WIDGET_HTML,state,'avaTUN · '+state.get('title','مرکز کنترل'))
+        try:
+            result=self.widget(user_id,CONTROL_WIDGET_HTML,state,'avaTUN · '+state.get('title','مرکز کنترل'))
+        except RuntimeError as error:
+            if 'INPUT_MEDIA_WIDGET_NOT_ALLOWED' not in str(error):raise
+            logging.warning('Telegram has not enabled HTML widgets for this bot; using inline keyboard fallback.')
+            self.state.put('telegram-widget-disabled',True)
+            self.widget_fallback(user_id,state)
+            return
         message_id=(result or {}).get('message_id');chat_id=((result or {}).get('chat') or {}).get('id',user_id)
         if message_id:
             self.state.put(storage_key,{'chat_id':chat_id,'message_id':int(message_id)})
@@ -1128,9 +1279,20 @@ class Bot:
                          'confirm-forward-delete', 'execute-forward-delete', 'audit', 'haproxy-widget',
                          'forward-new', 'forward-start', 'forward-edit', 'wizard-set', 'wizard-toggle', 'wizard-step',
                          'wizard-backend', 'wizard-weight', 'wizard-apply', 'wizard-cancel',
-                         'update-check', 'confirm-app-update', 'execute-app-update'}
+                         'update-check', 'confirm-app-update', 'execute-app-update',
+                         'widget-fallback-execute'}
         if action in admin_actions and self.users.get(user_id) != 'admin':
             raise PanelError('این عملیات فقط برای مدیر فعال است.')
+        if action=='widget-fallback-query':
+            self.widget_fallback_query(user_id,payload.get('query',''),payload.get('context'))
+            return
+        if action=='widget-fallback-execute':
+            self.execute_widget_fallback(user_id,payload.get('operation') or {},payload.get('context'))
+            return
+        if action=='widget-retry':
+            self.state.put('telegram-widget-disabled',False)
+            self.show_control_widget(user_id,'overview')
+            return
         widget_pages={'home':'overview','status':'overview','servers':'servers','servers-text':'servers',
                       'tunnels':'tunnels','tunnel-widget':'tunnels','hardware':'resources',
                       'forwards':'forwards','report':'report','audit':'audit'}

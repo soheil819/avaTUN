@@ -1,3 +1,8 @@
+## avaTUN 0.2.10
+
+- Gracefully handle Telegram rejecting HTML widgets for this bot and keep `/start` usable with an inline-keyboard interface.
+- Preserve server, tunnel, resource, forwarding, update, and confirmation flows in the fallback interface; allow an admin to retry widget delivery later.
+
 ## avaTUN 0.2.9
 
 - Consolidate Telegram bot navigation into one interactive HTML widget message for overview, servers, tunnels, resources, forwards, reports, audit, and updates.
