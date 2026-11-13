@@ -1,3 +1,7 @@
+## avaTUN 0.1.45
+
+- Repair managed Backhaul installations whose installed core checksum no longer matches manager state. The installer now replaces it only with the bundled, manifest-verified core and passes the exact current checksum as a guard; managed tunnels are preserved or the update fails safely.
+
 ## avaTUN 0.1.44
 
 - Fixed Backhaul repair on partially installed servers: when the verified Backhaul core exists but the manager command is missing, installation restores only the missing manager entry point and preserves the existing core, state, tunnel configs, and service units.

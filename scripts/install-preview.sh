@@ -166,6 +166,39 @@ PY
                 --manifest-entry bin/backhaul
         fi
     fi
+
+    # A prior installer or manual replacement may have left the installed
+    # core different from the hash recorded by its own manager. Reconcile it
+    # only when manager state exists, using the exact current digest as the
+    # replacement guard and the bundled manifest as the trusted new build.
+    if [ -x /usr/local/bin/backhaul ] && [ -x /usr/local/bin/backhaul-manager ] && [ -f /var/lib/backhaul-manager/state.json ]; then
+        current_core_sha=$(python3 - <<'PY'
+import hashlib, pathlib
+p=pathlib.Path('/usr/local/bin/backhaul')
+h=hashlib.sha256()
+with p.open('rb') as f:
+    for block in iter(lambda:f.read(1024*1024), b''):
+        h.update(block)
+print(h.hexdigest())
+PY
+)
+        recorded_core_sha=$(python3 - <<'PY'
+import json, pathlib
+try:
+    print(json.loads(pathlib.Path('/var/lib/backhaul-manager/state.json').read_text()).get('core_sha256', ''))
+except Exception:
+    raise SystemExit(1)
+PY
+)
+        if [ -n "$recorded_core_sha" ] && [ "$current_core_sha" != "$recorded_core_sha" ]; then
+            python3 /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py install \
+                --binary /opt/tunnelmgr/vendor/backhaul/bin/backhaul \
+                --manifest /opt/tunnelmgr/vendor/backhaul/SHA256SUMS \
+                --manifest-entry bin/backhaul \
+                --replace-existing --previous-sha256 "$current_core_sha"
+            echo 'Reconciled Backhaul core to the bundled verified build; managed tunnels were preserved.'
+        fi
+    fi
 else
     echo "Backhaul TUN core is bundled for amd64; skipped on $(uname -m)."
 fi
