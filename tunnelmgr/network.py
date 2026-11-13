@@ -11,7 +11,8 @@ import zlib
 def run(*args):
     result=subprocess.run(['/usr/sbin/ip', *args],capture_output=True,text=True)
     if result.returncode:
-        raise RuntimeError(result.stderr.strip() or 'ip command failed')
+        detail=result.stderr.strip() or 'unknown kernel error'
+        raise RuntimeError('ip '+ ' '.join(map(str,args)) + ' failed: ' + detail)
 
 def run_tc(*args):
     result=subprocess.run(['/usr/sbin/tc', *args],capture_output=True,text=True)

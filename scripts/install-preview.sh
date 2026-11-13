@@ -151,6 +151,15 @@ install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service
 install -d -o tunnelmgr -g tunnelmgr -m 0700 /var/lib/tunnelmgr
 install -d -o root -g root -m 0700 /etc/tunnelmgr/network
+install -d -o root -g root -m 0755 /etc/modules-load.d
+cat > /etc/modules-load.d/avatun-tunnels.conf <<'EOF'
+fou
+ipip
+ip_gre
+sit
+EOF
+chmod 0644 /etc/modules-load.d/avatun-tunnels.conf
+for module in fou ipip ip_gre sit; do modprobe "$module" >/dev/null 2>&1 || true; done
 # Paths listed in tunnelmgr-privd.service ReadWritePaths must exist before systemd starts it.
 install -d -o root -g root -m 0755 /etc/backhaul /var/lib/backhaul-manager /etc/swanctl/conf.d
 install -d -o root -g root -m 0755 /var/lib/letsencrypt /var/log/letsencrypt /var/cache/letsencrypt

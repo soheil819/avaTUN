@@ -12,6 +12,15 @@ from network import apply, iface, private
 from topology import mesh_plan
 from routing import validate as validate_routing
 
+def ensure_kernel_modules(cfg):
+    kind=cfg.get('kind')
+    modules={'ipip-fou':('fou','ipip'),'gre-fou':('fou','ip_gre'),'sit-fou':('fou','sit')}.get(kind,())
+    for module in modules:
+        result=subprocess.run(['/usr/sbin/modprobe',module],capture_output=True,text=True,timeout=15)
+        if result.returncode:
+            detail=result.stderr.strip() or result.stdout.strip() or 'module is unavailable for the running kernel'
+            raise RuntimeError(f'Cannot load kernel module {module} required by {kind}: {detail}')
+
 
 def validate(group, cfg):
     if group == 'mesh':
@@ -148,6 +157,7 @@ def manage(req, ident):
                 Path(f.name).unlink(missing_ok=True)
         return {'ok':True}
     if old and group=='network' and action in ('start','stop','restart','status'):
+        if action in ('start','restart'):ensure_kernel_modules(old)
         if action=='start':
             enabled=subprocess.run(['systemctl','enable',unit],capture_output=True,text=True,timeout=15)
             if enabled.returncode:

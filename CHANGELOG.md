@@ -1,3 +1,8 @@
+## avaTUN 0.1.57
+
+- Load required FoU/IP tunnel modules before starting native FoU profiles and configure them for automatic loading after reboot.
+- Include the exact failing `ip` command in RTNETLINK errors to make tunnel startup failures diagnosable.
+
 ## avaTUN 0.1.56
 
 - Read live addresses from each tunnel interface on both endpoints, show the internal pair on the mesh, and ping the peer IP through that TUN interface.
