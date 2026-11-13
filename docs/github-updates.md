@@ -1,6 +1,6 @@
 # GitHub updates
 
-The installer enables a timer that checks the `codex/release-0.1.35` branch of
+The installer enables a timer that checks the `main` branch of
 `soheil819/avaTUN` every six hours. It compares the GitHub `APP_VERSION` with
 the installed version and stores the result in `/var/lib/tunnelmgr/github-update.json`.
 

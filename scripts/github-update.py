@@ -16,7 +16,7 @@ import urllib.request
 
 OWNER = 'soheil819'
 REPOSITORY = 'avaTUN'
-REF = 'codex/release-0.1.35'
+REF = 'main'
 API = f'https://api.github.com/repos/{OWNER}/{REPOSITORY}'
 RAW = f'https://raw.githubusercontent.com/{OWNER}/{REPOSITORY}'
 STATUS = pathlib.Path('/var/lib/tunnelmgr/github-update.json')

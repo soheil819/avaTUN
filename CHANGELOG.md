@@ -1,3 +1,7 @@
+## avaTUN 0.1.59
+
+- Check the `main` branch for panel self-updates so published releases are visible to the central panel updater.
+
 ## avaTUN 0.1.58
 
 - Prepare the kernel modules used by WireGuard, TUN/OpenVPN, GRE, IPIP, GRETAP, Geneve, VXLAN, SIT, FoU, L2TPv3, and IPsec/ESP during installation and after reboot.
