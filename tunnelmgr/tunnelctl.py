@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.59"
+APP_VERSION="0.1.60"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -156,19 +156,34 @@ def path_mtu_probe(host):
     if best<0:return {"mtu":route_mtu,"method":"egress-interface-fallback","device":dev}
     return {"mtu":best+header,"method":"df-ping","device":dev}
 
-def network_snapshot():
+def ip_json(*args,attempts=3,timeout=8):
     ipbin=shutil.which('ip') or '/usr/sbin/ip'
-    addresses=subprocess.run([ipbin,'-json','address','show'],capture_output=True,text=True,check=True,timeout=8)
-    routes=subprocess.run([ipbin,'-json','route','show','table','all'],capture_output=True,text=True,check=True,timeout=8)
+    command=[ipbin,'-json',*args]
+    for attempt in range(attempts):
+        try:
+            result=subprocess.run(command,capture_output=True,text=True,timeout=timeout)
+            if result.returncode==0:
+                try:return json.loads(result.stdout or '[]')
+                except ValueError as error:raise RuntimeError(f"ip {' '.join(args)} returned invalid JSON: {error}") from error
+            detail=result.stderr.strip() or result.stdout.strip() or 'no diagnostic output'
+            failure=f"ip {' '.join(args)} failed with exit status {result.returncode}: {detail}"
+        except (OSError,subprocess.TimeoutExpired) as error:
+            failure=f"ip {' '.join(args)} could not run: {error}"
+        if attempt+1<attempts:time.sleep(.2)
+    raise RuntimeError(failure)
+
+def network_snapshot():
+    addresses=ip_json('address','show')
+    routes=ip_json('route','show','table','all')
     interfaces=set();networks=set()
-    for link in json.loads(addresses.stdout or '[]'):
+    for link in addresses:
         name=link.get('ifname')
         if name:interfaces.add(name)
         for address in link.get('addr_info',[]):
             if address.get('family')!='inet' or not address.get('local'):continue
             try:networks.add(str(ipaddress.ip_network(f"{address['local']}/{int(address['prefixlen'])}",strict=False)))
             except (KeyError,TypeError,ValueError):continue
-    for route in json.loads(routes.stdout or '[]'):
+    for route in routes:
         destination=route.get('dst')
         if not destination or destination=='default':continue
         try:

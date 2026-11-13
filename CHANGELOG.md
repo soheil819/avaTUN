@@ -1,3 +1,7 @@
+## avaTUN 0.1.60
+
+- Retry transient `ip` network-snapshot failures and include the command's stderr when the address or route dump still fails.
+
 ## avaTUN 0.1.59
 
 - Check the `main` branch for panel self-updates so published releases are visible to the central panel updater.
