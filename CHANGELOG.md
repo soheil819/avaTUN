@@ -1,3 +1,8 @@
+## avaTUN 0.1.40
+
+- هماهنگ‌کردن نقشهٔ «شبکه در یک نگاه» با نقشهٔ Mesh؛ استفاده از تصویرهای SVG سرورها، پس‌زمینه، مسیرهای رنگی و نشان وضعیت یکسان.
+- نمایش نام، IP، تعداد تونل و آنلاین‌بودن هر سرور در نقشهٔ نمای کلی.
+
 ## avaTUN 0.1.39
 
 - Added a live Telegram server status widget with online state, tunnel count, installed version, service status, selected server details, and 15-second refresh.
