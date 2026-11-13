@@ -309,7 +309,9 @@ def apply(profile, up, profile_name=None):
         li=str(profile.get('local_id') or profile['outer_local']);ri=str(profile.get('remote_id') or profile['outer_peer'])
         def q(v):return '"'+str(v).replace('\\','\\\\').replace('"','\\"')+'"'
         udp='encap = yes\n ' if kind=='ipsec-esp-udp' else ''
-        text=f'''connections {{ {safe} {{ version = 2\n local_addrs = {profile['outer_local']}\n remote_addrs = {profile['outer_peer']}\n proposals = aes256-sha256-modp2048\n mobike = no\n {udp}local {{ auth = psk\n id = {q(li)} }}\n remote {{ auth = psk\n id = {q(ri)} }}\n children {{ {safe} {{ mode = tunnel\n local_ts = {local}/32\n remote_ts = {peer}/32\n esp_proposals = aes256-sha256\n start_action = {'start' if profile.get('role')=='client' else 'none'} }} }} }} }}\nsecrets {{ ike-{safe} {{ id-1 = {q(li)}\n id-2 = {q(ri)}\n secret = {q(profile['psk'])} }} }}\n'''
+        # Initiation is explicit below after loading the profile.  A strongSwan
+        # start_action='start' would launch a second CHILD_SA concurrently.
+        text=f'''connections {{ {safe} {{ version = 2\n local_addrs = {profile['outer_local']}\n remote_addrs = {profile['outer_peer']}\n proposals = aes256-sha256-modp2048\n mobike = no\n {udp}local {{ auth = psk\n id = {q(li)} }}\n remote {{ auth = psk\n id = {q(ri)} }}\n children {{ {safe} {{ mode = tunnel\n local_ts = {local}/32\n remote_ts = {peer}/32\n esp_proposals = aes256-sha256\n start_action = none }} }} }} }}\nsecrets {{ ike-{safe} {{ id-1 = {q(li)}\n id-2 = {q(ri)}\n secret = {q(profile['psk'])} }} }}\n'''
         conf.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
         fd=os.open(conf,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
         with os.fdopen(fd,'w') as f:f.write(text)

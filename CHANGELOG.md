@@ -1,3 +1,7 @@
+## avaTUN 0.2.3
+
+- Disable StrongSwan `start_action` for generated IPsec children because the network profile explicitly invokes `swanctl --initiate`; this prevents a duplicate CHILD_SA request from tearing down an otherwise established tunnel.
+
 ## avaTUN 0.2.2
 
 - Detect the resolved StrongSwan library path and add narrowly scoped AppArmor read/map rules for VICI, libstrongswan, and StrongSwan plugins before enabling `strongswan.service`.
