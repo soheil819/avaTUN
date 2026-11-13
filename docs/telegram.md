@@ -25,14 +25,18 @@ are sufficient. No inbound Telegram port or webhook is needed.
 - Daily report at 09:00 Asia/Tehran by default, plus `/report` on demand.
 - Numeric user allowlists, admin/viewer roles, operation audit and one-use
   confirmation buttons. Callback buttons expire after ten minutes or a restart.
+- Admin-only `/update` checks GitHub and offers a confirmed background update;
+  admins are also notified once when a newer version is found.
 - Persistent polling offset, incidents and pending notifications in SQLite.
   A failed delivery does not prevent the bot from receiving new commands.
 
 ## Configuration
 
-The installer copies the bot and systemd unit. Activation requires a config.
-Create a dedicated **admin** panel account for full management, or a viewer
-account for a resource/status-only deployment. Panel authorization still applies
+The installer copies the bot and systemd unit. On the first save in **Settings
+→ Telegram bot**, enter the BotFather token and at least one Telegram admin ID.
+The panel creates the initial config and a dedicated internal admin account
+automatically; there is no separate bot-install step. Later saves can leave the
+token field blank to retain the current token. Panel authorization still applies
 in addition to the Telegram roles. The legacy `chat_id` configuration remains
 supported with viewer access.
 
@@ -52,10 +56,9 @@ Create `/etc/avatun/telegram.json` on the central panel server:
 }
 ```
 
-After installation, administrators can change the BotFather token and Telegram
-administrator ID list from **Settings → Telegram bot** in the web panel. Leave
-the token field blank to keep the existing token. The token is never sent back
-to the browser; save restarts the optional bot service automatically.
+Administrators can change the BotFather token and Telegram administrator ID
+list from **Settings → Telegram bot** in the web panel. The token is never sent
+back to the browser; saving enables and restarts the bot service automatically.
 
 User IDs must be positive numbers. Only private chats where the sender and chat
 ID match an allowed user are accepted. Add a viewer to `viewers` to permit status

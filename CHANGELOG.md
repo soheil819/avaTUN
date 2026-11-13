@@ -1,3 +1,18 @@
+## avaTUN 0.1.48
+
+- Every installer run stops Backhaul services, removes previous installed Backhaul cores and manager entry points, installs the manifest-verified bundled core, and restarts previously active managed tunnels while preserving tunnel configs and state.
+- First-time Telegram settings now create the missing bot configuration and a dedicated internal panel account automatically; saving valid bot credentials enables the bot service.
+- GRE and other native network profiles start through a non-blocking systemd request and remain registered while network dependencies are still activating, instead of being rolled back by a 12-second wait timeout.
+- A six-hour GitHub version checker reports new versions in the panel and Telegram; admins can review and confirm a background update from either interface.
+
+## avaTUN 0.1.47
+
+- Bootstrap missing Backhaul manager state only when canonical managed configs/units are absent, then replace the mismatched core with the manifest-verified build using its exact current checksum as the guard.
+
+## avaTUN 0.1.46
+
+- Repair legacy Backhaul manager states that lack a recorded core checksum by reconciling against the bundled manifest-verified core with an exact current-checksum guard.
+
 ## avaTUN 0.1.45
 
 - Repair managed Backhaul installations whose installed core checksum no longer matches manager state. The installer now replaces it only with the bundled, manifest-verified core and passes the exact current checksum as a guard; managed tunnels are preserved or the update fails safely.

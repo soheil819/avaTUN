@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.45"
+APP_VERSION="0.1.48"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -45,6 +45,19 @@ def db():
     c.execute("CREATE TABLE IF NOT EXISTS port_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.commit(); return c
+
+def github_update_status():
+    path=pathlib.Path('/var/lib/tunnelmgr/github-update.json')
+    try:data=json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError,ValueError):data={}
+    if not data:
+        data={'current_version':APP_VERSION,'latest_version':None,'update_available':False,
+              'state':'checking','checked_at':None,'error':None}
+    data['current_version']=APP_VERSION
+    service=subprocess.run(['/usr/bin/systemctl','is-active','tunnelmgr-github-update.service'],capture_output=True,text=True,timeout=5).stdout.strip()
+    if service in ('active','activating'):
+        data['state']='installing'
+    return data
 
 def password_digest(password, salt=None):
     salt=salt or secrets.token_bytes(16)
@@ -1221,6 +1234,10 @@ def server(host,port):
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'telegram-config','id':'telegram-config','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
+            if route=="/api/v1/updates":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:return self.send(200,github_update_status())
+                except Exception as e:return self.send(502,{'error':str(e)})
             if route=="/api/v1/telegram/snapshot":
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
@@ -1327,6 +1344,16 @@ def server(host,port):
                     data=self.body()
                     result=privileged({'op':'telegram-config','id':'telegram-config','action':'save',
                         'bot_token':data.get('bot_token',''),'admin_ids':data.get('admin_ids')})
+                    if result.get('error'):return self.send(400,result)
+                    return self.send(202,result)
+                except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/updates":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:
+                    data=self.body()
+                    action=data.get('action')
+                    if action not in ('check','apply'):raise ValueError('عملیات به‌روزرسانی نامعتبر است.')
+                    result=privileged({'op':'github-update','id':'github-update','action':'start' if action=='apply' else 'check'},timeout=20)
                     if result.get('error'):return self.send(400,result)
                     return self.send(202,result)
                 except Exception as e:return self.send(400,{'error':str(e)})

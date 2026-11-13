@@ -95,6 +95,23 @@ class Panel:
     def snapshot(self):
         return self.request('/api/v1/telegram/snapshot')
 
+    def updates(self):
+        return self.request('/api/v1/updates')
+
+    def check_updates(self):
+        previous = self.updates()
+        queued = self.request('/api/v1/updates', {'action': 'check'}, timeout=20)
+        requested = float(queued.get('requested_at', time.time()))
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            status = self.updates()
+            if float(status.get('checked_at') or 0) >= requested or status.get('state') == 'error':
+                return status
+            if status.get('state') in ('available', 'current') and status.get('checked_at') != previous.get('checked_at'):
+                return status
+            time.sleep(1)
+        return self.updates()
+
     def operate(self, tunnel_id, action, expected):
         if action not in ('start', 'stop', 'restart'):
             raise PanelError('عملیات تونل نامعتبر است')
@@ -510,6 +527,7 @@ class Bot:
                 [self.button(user_id, '🔗 وضعیت تونل‌ها', 'tunnel-widget'), self.button(user_id, '📈 منابع', 'hardware')],
                 [self.button(user_id, '📋 گزارش ۲۴ ساعت', 'report')]]
         if self.users[user_id] == 'admin':
+            rows.insert(2, [self.button(user_id, '⬆️ بررسی به‌روزرسانی', 'update-check')])
             rows.insert(2, [self.button(user_id, '↔️ فورواردر', 'forwards')])
             rows.append([self.button(user_id, '🧾 عملیات اخیر', 'audit')])
         self.send(user_id, 'avaTUN · مدیریت شبکه\nیک بخش را انتخاب کن.', rows)
@@ -880,10 +898,40 @@ class Bot:
         admin_actions = {'confirm-tunnel', 'confirm-forward', 'execute-tunnel', 'execute-forward', 'forward',
                          'confirm-forward-delete', 'execute-forward-delete', 'audit', 'haproxy-widget',
                          'forward-new', 'forward-start', 'forward-edit', 'wizard-set', 'wizard-toggle', 'wizard-step',
-                         'wizard-backend', 'wizard-weight', 'wizard-apply', 'wizard-cancel'}
+                         'wizard-backend', 'wizard-weight', 'wizard-apply', 'wizard-cancel',
+                         'update-check', 'confirm-app-update', 'execute-app-update'}
         if action in admin_actions and self.users.get(user_id) != 'admin':
             raise PanelError('این عملیات فقط برای مدیر فعال است.')
-        if action.startswith('confirm-'):
+        if action == 'update-check':
+            status = self.panel.check_updates()
+            if status.get('update_available'):
+                self.send(user_id, f"نسخهٔ جدید avaTUN پیدا شد: {status.get('current_version')} → {status.get('latest_version')}\nبرای نصب، تأیید کن.",
+                          [[self.button(user_id, '⬆️ تأیید و نصب', 'confirm-app-update', commit=status.get('latest_commit'))],
+                           [self.button(user_id, 'لغو', 'home')]])
+            elif status.get('state') == 'installing':
+                self.send(user_id, 'به‌روزرسانی avaTUN در حال اجراست.')
+            elif status.get('state') == 'error':
+                self.send(user_id, 'بررسی GitHub انجام نشد: ' + str(status.get('error') or 'خطای نامشخص')[:300])
+            else:
+                self.send(user_id, 'avaTUN به‌روز است · نسخهٔ ' + str(status.get('current_version', '—')))
+        elif action == 'confirm-app-update':
+            status = self.panel.updates()
+            if not status.get('update_available') or (payload.get('commit') and payload.get('commit') != status.get('latest_commit')):
+                self.send(user_id, 'وضعیت نسخه عوض شده است؛ دوباره /update را بفرست.')
+                return
+            self.send(user_id, f"avaTUN {status.get('latest_version')} نصب شود؟ پنل هنگام به‌روزرسانی برای چند لحظه راه‌اندازی مجدد می‌شود.",
+                      [[self.button(user_id, '✅ نصب نسخهٔ جدید', 'execute-app-update', commit=status.get('latest_commit'))],
+                       [self.button(user_id, 'انصراف', 'home')]])
+        elif action == 'execute-app-update':
+            status = self.panel.updates()
+            if not status.get('update_available') or (payload.get('commit') and payload.get('commit') != status.get('latest_commit')):
+                self.send(user_id, 'این نسخه دیگر در دسترس نیست؛ دوباره /update را بفرست.')
+                return
+            self.state.audit(user_id, 'github-update', status.get('latest_version', ''), 'started')
+            result = self.panel.request('/api/v1/updates', {'action': 'apply'}, timeout=30)
+            self.state.audit(user_id, 'github-update', status.get('latest_version', ''), 'ok' if result.get('state') == 'installing' else 'failed')
+            self.send(user_id, 'درخواست به‌روزرسانی ثبت شد. پنل پس از نصب نسخهٔ جدید دوباره در دسترس قرار می‌گیرد.')
+        elif action.startswith('confirm-'):
             if action == 'confirm-forward-delete':
                 target = payload['rule_id']
                 self.send(user_id, f'قانون {target} روی {payload["server_id"]} و listener آن حذف شود؟',
@@ -1065,7 +1113,7 @@ class Bot:
                            '/tunnels': 'tunnel-widget', '/tunnel-list': 'tunnels', '/tunnel_list': 'tunnels',
                            '/hardware': 'hardware', '/forwards': 'forwards',
                            '/haproxy': 'forwards',
-                           '/report': 'report', '/audit': 'audit'}
+                           '/report': 'report', '/audit': 'audit', '/update': 'update-check'}
                 self.dispatch(sender, actions.get(command, 'home'), {})
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             self.send(sender, '⚠️ عملیات کامل نشد.\n' + self.scrub(str(error))[:600])
@@ -1078,6 +1126,16 @@ class Bot:
             self.state.observe('panel', 'ارتباط با پنل مرکزی قطع است', True, now, 60, admins)
             return
         self.state.observe('panel', 'ارتباط با پنل مرکزی قطع است', False, now, 60, admins)
+        try:
+            update = self.panel.updates()
+            marker = update.get('latest_commit') or update.get('latest_version')
+            if update.get('update_available') and marker and self.state.get('github_update_notice') != marker:
+                for user_id in admins:
+                    self.send(user_id, f"🆕 نسخهٔ جدید avaTUN موجود است: {update.get('current_version')} → {update.get('latest_version')}\nبرای دیدن جزئیات و تأیید نصب، /update را بفرست.",
+                              [[self.button(user_id, 'بررسی و تأیید نسخه', 'update-check')]])
+                self.state.put('github_update_notice', marker)
+        except (OSError, ValueError, RuntimeError):
+            pass
         statuses = {item['id']: item for item in snapshot['statuses']}
         for server in [{'id': 'local'}, *snapshot['servers']]:
             item = statuses.get(server['id'])

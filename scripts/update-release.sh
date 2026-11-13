@@ -9,7 +9,7 @@ restore(){
  backup=$1
  [ -f "$backup/ready" ]
  cp -a "$backup/app/." /opt/tunnelmgr/
- for src in "$root"/packaging/systemd/*.service; do
+ for src in "$root"/packaging/systemd/*.service "$root"/packaging/systemd/*.timer; do
    name=$(basename "$src")
    if [ -f "$backup/$name" ]; then cp -a "$backup/$name" "/etc/systemd/system/$name"; else rm -f "/etc/systemd/system/$name"; fi
  done
@@ -25,7 +25,7 @@ esac
 install -d -m 0700 /var/backups/tunnelmgr
 backup=$(mktemp -d /var/backups/tunnelmgr/release.XXXXXX)
 cp -a /opt/tunnelmgr "$backup/app"
-for src in "$root"/packaging/systemd/*.service; do
+for src in "$root"/packaging/systemd/*.service "$root"/packaging/systemd/*.timer; do
  name=$(basename "$src"); if [ -f "/etc/systemd/system/$name" ]; then cp -a "/etc/systemd/system/$name" "$backup/"; fi
 done
 touch "$backup/ready"

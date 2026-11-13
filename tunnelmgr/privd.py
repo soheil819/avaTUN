@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Restricted root helper for validated Backhaul TUN instances."""
 from profiles import manage
-import ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv
+import ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
 from pathlib import Path
 SOCKET='/run/tunnelmgr/privd.sock'
 ID=re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
@@ -285,6 +285,25 @@ def handle(c):
             cmd=['start','--no-block',unit] if op=='mesh-apply' else ['show','-p','ActiveState','-p','Result','-p','ExecMainStatus',unit]
             result=subprocess.run(['/usr/bin/systemctl',*cmd],capture_output=True,text=True,timeout=8)
             return send(c,{'ok':result.returncode==0,'output':(result.stdout+result.stderr).strip()})
+        if op=='github-update':
+            action=req.get('action')
+            if action=='check':
+                active=subprocess.run(['/usr/bin/systemctl','is-active','--quiet','tunnelmgr-github-update-check.service']).returncode==0
+                if not active:
+                    result=subprocess.run(['/usr/bin/systemctl','start','--no-block','tunnelmgr-github-update-check.service'],capture_output=True,text=True,timeout=10)
+                    if result.returncode:raise ValueError(result.stderr.strip() or 'بررسی GitHub شروع نشد.')
+                return send(c,{'ok':True,'state':'checking','requested_at':time.time()})
+            if action=='start':
+                status_path=Path('/var/lib/tunnelmgr/github-update.json')
+                status=json.loads(status_path.read_text()) if status_path.is_file() else {}
+                if not status.get('update_available'):
+                    raise ValueError('نسخهٔ جدیدی برای نصب پیدا نشد؛ ابتدا بررسی نسخه را اجرا کن.')
+                active=subprocess.run(['/usr/bin/systemctl','is-active','--quiet','tunnelmgr-github-update.service']).returncode==0
+                if active:return send(c,{'ok':True,'state':'installing'})
+                result=subprocess.run(['/usr/bin/systemctl','start','--no-block','tunnelmgr-github-update.service'],capture_output=True,text=True,timeout=10)
+                if result.returncode:raise ValueError(result.stderr.strip() or 'شروع به‌روزرسانی ناموفق بود.')
+                return send(c,{'ok':True,'state':'installing'})
+            raise ValueError('invalid GitHub update action')
         if op=='create':return send(c,tunnel_create(req,ident))
         if op=='haproxy':return send(c,haproxy_apply(req))
         if op=='panel-tls':
@@ -344,8 +363,31 @@ def handle(c):
                     raise ValueError('حداقل یک شناسهٔ عددی معتبر مدیر وارد کن.')
                 if len(set(admins))!=len(admins):raise ValueError('شناسهٔ مدیر تکراری است.')
                 if token and not re.fullmatch(r'[0-9]{5,15}:[A-Za-z0-9_-]{20,}',token):raise ValueError('قالب توکن BotFather معتبر نیست.')
-                if not path.is_file():raise ValueError('پیکربندی اولیهٔ ربات پیدا نشد؛ ابتدا ربات را نصب کن.')
-                config=json.loads(path.read_text())
+                if path.is_file():
+                    config=json.loads(path.read_text())
+                else:
+                    if not token:raise ValueError('برای راه‌اندازی اولیه، توکن BotFather را وارد کن.')
+                    # The installer provides the bot code and unit, but older
+                    # installations may not have the first config file yet.
+                    # Create its dedicated panel account and starter config on
+                    # the first save instead of asking for a separate install.
+                    account_name='avatun-telegram'
+                    cli='/opt/tunnelmgr/tunnelmgr/tunnelctl.py'
+                    env=os.environ.copy();env['TUNNELMGR_HOME']='/var/lib/tunnelmgr'
+                    listed=subprocess.run(['/usr/bin/python3',cli,'account','list'],capture_output=True,text=True,timeout=15,env=env)
+                    if listed.returncode:raise ValueError('ساخت حساب داخلی ربات ناموفق بود؛ سرویس پنل را بررسی کن.')
+                    try:accounts=json.loads(listed.stdout)
+                    except ValueError:raise ValueError('فهرست حساب‌های پنل قابل‌خواندن نیست.') from None
+                    action='password' if any(row.get('name')==account_name for row in accounts) else 'create'
+                    password=secrets.token_urlsafe(32)
+                    command=['/usr/bin/python3',cli,'account',action,account_name]
+                    if action=='create':command.extend(['--role','admin'])
+                    command.append('--password-stdin')
+                    created=subprocess.run(command,input=password+'\n',capture_output=True,text=True,timeout=15,env=env)
+                    if created.returncode:raise ValueError('ساخت حساب داخلی ربات ناموفق بود؛ سرویس پنل را بررسی کن.')
+                    config={'bot_token':'','admins':[],'viewers':[],'panel_url':'http://127.0.0.1:8765',
+                        'panel_username':account_name,'panel_password':password,'timezone':'Asia/Tehran',
+                        'daily_report_hour':9,'state_path':'/var/lib/tunnelmgr/telegram.sqlite3'}
                 if token:config['bot_token']=token
                 config['admins']=admins
                 config.setdefault('viewers',[])
@@ -354,6 +396,9 @@ def handle(c):
                 os.chown(tmp,0,pwd.getpwnam('tunnelmgr').pw_gid);tmp.chmod(0o640);os.replace(tmp,path)
                 unit=Path('/etc/systemd/system/avatun-telegram.service')
                 if unit.is_file():
+                    enabled=subprocess.run(['/usr/bin/systemctl','is-enabled','--quiet','avatun-telegram.service']).returncode==0
+                    if not enabled:
+                        subprocess.run(['/usr/bin/systemctl','enable','avatun-telegram.service'],check=True,capture_output=True,text=True,timeout=10)
                     subprocess.run(['/usr/bin/systemctl','restart','--no-block','avatun-telegram.service'],check=True,capture_output=True,text=True,timeout=10)
                 return send(c,{'ok':True,'configured':bool(config.get('bot_token')),
                     'admin_ids':admins,'restarting':unit.is_file(),'restart_requested_at':time.time()})

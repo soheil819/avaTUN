@@ -1,0 +1,12 @@
+[Unit]
+Description=Check avaTUN GitHub for updates every six hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=tunnelmgr-github-update-check.service
+
+[Install]
+WantedBy=timers.target

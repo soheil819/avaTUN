@@ -1,0 +1,14 @@
+[Unit]
+Description=Update avaTUN from its trusted GitHub branch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/scripts/github-update.py install
+TimeoutStartSec=1200
+PrivateTmp=true
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET

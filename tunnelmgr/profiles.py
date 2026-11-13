@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 from network import apply, iface, private
 from topology import mesh_plan
@@ -147,13 +148,44 @@ def manage(req, ident):
                 Path(f.name).unlink(missing_ok=True)
         return {'ok':True}
     if old and group=='network' and action in ('start','stop','restart','status'):
-        cmd={'start':['enable','--now'],'stop':['disable','--now'],'restart':['restart'],'status':['show','-p','ActiveState','-p','Result']}[action]
-        result=subprocess.run(['systemctl',*cmd,unit],capture_output=True,text=True,timeout=12)
+        if action=='start':
+            enabled=subprocess.run(['systemctl','enable',unit],capture_output=True,text=True,timeout=15)
+            if enabled.returncode:
+                raise ValueError(enabled.stderr.strip() or enabled.stdout.strip() or 'systemd could not enable the tunnel service')
+            result=subprocess.run(['systemctl','start','--no-block',unit],capture_output=True,text=True,timeout=10)
+        else:
+            cmd={'stop':['disable','--now'],'restart':['restart'],'status':['show','-p','ActiveState','-p','Result']}[action]
+            result=subprocess.run(['systemctl',*cmd,unit],capture_output=True,text=True,timeout=30)
         if result.returncode:
             if action=='start':
                 try:apply(old,False)
                 except Exception:pass
-            raise ValueError(result.stderr.strip())
+                status=subprocess.run(['systemctl','show',unit,'-p','Result','-p','ExecMainCode','-p','ExecMainStatus','-p','ActiveState'],capture_output=True,text=True,timeout=8)
+                journal=subprocess.run(['journalctl','-u',unit,'-n','18','-o','cat','--no-pager'],capture_output=True,text=True,timeout=8)
+                details='\n'.join(x.strip() for x in (status.stdout,journal.stdout) if x.strip())
+                message=result.stderr.strip() or result.stdout.strip() or 'systemd could not start the tunnel service'
+                if details:message += '\nService diagnostics:\n'+details[-5000:]
+                raise ValueError(message)
+            raise ValueError(result.stderr.strip() or result.stdout.strip())
+        if action=='start':
+            deadline=time.monotonic()+20
+            while time.monotonic()<deadline:
+                status=subprocess.run(['systemctl','show',unit,'-p','ActiveState','-p','Result','--no-pager'],capture_output=True,text=True,timeout=8)
+                values=dict(line.split('=',1) for line in status.stdout.splitlines() if '=' in line)
+                if values.get('ActiveState')=='active':
+                    return {'ok':True,'output':'Tunnel service is active.'}
+                if values.get('ActiveState')=='failed':
+                    try:apply(old,False)
+                    except Exception:pass
+                    journal=subprocess.run(['journalctl','-u',unit,'-n','18','-o','cat','--no-pager'],capture_output=True,text=True,timeout=8)
+                    message=journal.stdout.strip() or values.get('Result','systemd could not start the tunnel service')
+                    raise ValueError(message[-5000:])
+                time.sleep(0.5)
+            # Network-online dependencies can keep a one-shot unit activating
+            # after systemd has accepted the start. Keep the profile registered
+            # and let status polling report its eventual state instead of
+            # rolling back a valid tunnel on a short client-side timeout.
+            return {'ok':True,'output':'Tunnel service start was accepted and is still activating.'}
         return {'ok':True,'output':result.stdout.strip()}
     if old and group=='network' and action=='delete' and old.get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'):
         subprocess.run(['systemctl','disable','--now',unit],capture_output=True,text=True,timeout=15)
