@@ -1,3 +1,8 @@
+## avaTUN 0.1.69
+- Read each managed tunnel's local and peer IP from its actual network interface and send health pings through that interface.
+- Probe IPsec using its configured inner addresses and source IP because these profiles assign addresses to loopback instead of creating a tunnel device.
+- Show tunnel interface addresses and ping state in the Mesh map without assuming every link is a TUN device.
+
 ## avaTUN 0.1.68
 - Install and activate the VICI-capable `charon-systemd` daemon required by `swanctl`; stop the legacy starter unit when migrating.
 - Fail with a direct VICI socket error instead of exposing `swanctl` usage output.
