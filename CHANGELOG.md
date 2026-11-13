@@ -1,3 +1,6 @@
+## avaTUN 0.2.0
+- Fix remote tunnel allocation, resource, network inventory, and MTU requests to call helpers through the imported tunnel manager module.
+
 ## avaTUN 0.1.70
 - Add a GitHub panel updater action to the central server row and a visible admin notice when a newer version is available.
 - Check GitHub after admin login and refresh the stored update status while the panel remains open; retain the six-hour systemd check.
