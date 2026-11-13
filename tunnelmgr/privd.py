@@ -149,7 +149,7 @@ def haproxy_apply(req):
         return {'ok':True,'active':False,'status':'no managed forwards'}
     if HAPROXY_MARKER_START in base or HAPROXY_MARKER_END in base:raise ValueError('nested managed markers found in HAProxy configuration')
     lines=[HAPROXY_MARKER_START,'','defaults','    log global','    mode tcp','    option tcplog','    timeout connect 5s','    timeout client 60s','    timeout server 60s']
-    seen=set()
+    seen=set();loopback_ports=set()
     for rule in rules:
         if not isinstance(rule,dict):raise ValueError('invalid port-forward rule')
         ident=rule.get('id','')
@@ -168,6 +168,12 @@ def haproxy_apply(req):
         endpoint=(str(listen),port)
         if endpoint in seen:raise ValueError('duplicate listener address and port')
         seen.add(endpoint)
+        # Make each managed TCP forward available locally as well. A wildcard
+        # IPv4 bind already includes loopback; an explicit local bind is needed
+        # for public or IPv6 listener addresses.
+        add_loopback_bind=not (listen.version==4 and (listen.is_unspecified or listen==ipaddress.IPv4Address('127.0.0.1')))
+        if port in loopback_ports:raise ValueError(f'only one HAProxy rule can use 127.0.0.1:{port}; choose a different listen port')
+        loopback_ports.add(port)
         algorithm=rule.get('algorithm')
         if algorithm not in ('roundrobin','leastconn','source','first'):raise ValueError('invalid balancing algorithm')
         proxy_protocol=rule.get('proxy_protocol','none')
@@ -179,6 +185,7 @@ def haproxy_apply(req):
         if algorithm=='first' and sum(1 for b in backends if isinstance(b,dict) and b.get('role','primary')=='primary')!=1:raise ValueError('failover requires exactly one primary backend')
         bind=f'[{listen}]:{port}' if listen.version==6 else f'{listen}:{port}'
         lines += ['',f'frontend tm_fwd_{ident}','    mode tcp',f'    bind {bind}']
+        if add_loopback_bind:lines.append(f'    bind 127.0.0.1:{port}')
         if algorithm=='first':lines.append('    option clitcpka')
         lines += [f'    default_backend tm_pool_{ident}',f'backend tm_pool_{ident}','    mode tcp',f'    balance {algorithm}','    option tcp-check']
         if algorithm=='first':

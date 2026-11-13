@@ -12,7 +12,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/avatun-install.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 mkdir -p "$WORK/source"
 curl --fail --location --silent --show-error \
-    https://github.com/soheil819/avaTUN/archive/refs/heads/codex/release-0.1.35.tar.gz \
+    https://github.com/soheil819/avaTUN/archive/refs/heads/main.tar.gz \
     | tar -xz --strip-components=1 -C "$WORK/source"
 
 if [[ "$(id -u)" -eq 0 ]]; then

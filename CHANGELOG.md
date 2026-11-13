@@ -1,3 +1,8 @@
+## avaTUN 0.1.67
+- Make managed HAProxy TCP forwards listen on `127.0.0.1` in addition to their selected address. IPv4 wildcard and loopback listeners already cover localhost.
+- Reject ambiguous duplicate localhost ports when multiple managed rules would claim the same loopback port.
+- Point the GitHub bootstrap installer at the canonical `main` branch.
+
 ## avaTUN 0.1.66
 
 - Include Backhaul TUN/IPX links in the forwarder when their peer address is known or can be supplied, and validate that the backend route uses the selected IPX interface.
