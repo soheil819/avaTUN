@@ -119,6 +119,7 @@ command -v wg >/dev/null 2>&1 || PACKAGES="$PACKAGES wireguard-tools"
 command -v openvpn >/dev/null 2>&1 || PACKAGES="$PACKAGES openvpn"
 command -v ocserv >/dev/null 2>&1 || PACKAGES="$PACKAGES ocserv"
 command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
+command -v iperf3 >/dev/null 2>&1 || PACKAGES="$PACKAGES iperf3"
 command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
 CHARON_SYSTEMD_STATUS=$(dpkg-query -W -f='${Status}' charon-systemd 2>/dev/null || true)
 case "$CHARON_SYSTEMD_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES charon-systemd" ;; esac

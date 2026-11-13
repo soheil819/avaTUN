@@ -4,14 +4,14 @@ from __future__ import annotations
 import hashlib
 import argparse, getpass, ipaddress, json, os, pathlib, re, secrets, shlex, shutil, sqlite3, subprocess, sys, time
 import tarfile, tempfile
-import ssl, socket, urllib.request
+import ssl, socket, urllib.request, signal
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.5"
+APP_VERSION="0.2.6"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -21,6 +21,7 @@ MONITOR_LOCK=threading.Lock();MONITOR_TUNNELS={};MONITOR_SERVERS=[];MONITOR_RESO
 GEOIP_CACHE={}
 FORWARD_LOCK=threading.Lock()
 NATIVE_PAIR_LOCK=threading.Lock()
+SPEEDTEST_LOCK=threading.Lock()
 FIELDS={"listen","peer","secret_file","tun_name","tun_local","tun_remote","tun_mtu","health_port","replace"}
 
 def db():
@@ -45,6 +46,7 @@ def db():
     if "geoip_host" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN geoip_host TEXT NOT NULL DEFAULT ''")
     c.execute("CREATE TABLE IF NOT EXISTS port_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
     c.commit(); return c
 
 def github_update_status():
@@ -92,6 +94,16 @@ def account(args):
 def rows():
     with db() as c:return [dict(r)|{"metadata":json.loads(r["metadata"])} for r in c.execute("SELECT * FROM tunnels ORDER BY id")]
 def find(ident):return next((x for x in rows() if x["id"]==ident),None)
+
+def tunnel_speedtest_rows():
+    with db() as c:return {row['id']:json.loads(row['result']) for row in c.execute('SELECT id,result FROM tunnel_speedtests')}
+
+def save_tunnel_speedtest(ident,result):
+    with db() as c:c.execute('INSERT INTO tunnel_speedtests(id,result,checked_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET result=excluded.result,checked_at=excluded.checked_at',(ident,json.dumps(result,ensure_ascii=False),int(result.get('checked_at',time.time()))))
+
+def attach_speedtests(items):
+    results=tunnel_speedtest_rows()
+    return [dict(item,speedtest=results.get(item.get('id'))) for item in items]
 
 def erspan_health(item):
     checked=int(time.time())
@@ -250,6 +262,108 @@ def _interface_ip(item):
         except (AttributeError,TypeError,ValueError):continue
         if parsed.version==4:return str(parsed)
     return None
+
+def iperf3_server_start(address,port):
+    address=str(ipaddress.ip_address(address));port=int(port)
+    if not 1024<=port<=65535:raise ValueError('iperf3 test port is outside the allowed range')
+    binary=shutil.which('iperf3')
+    if not binary:raise RuntimeError('iperf3 is not installed on this tunnel endpoint; update the server installer first')
+    child=subprocess.Popen([binary,'-s','-1','-B',address,'-p',str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True)
+    time.sleep(.2)
+    if child.poll() is not None:raise RuntimeError('iperf3 could not start its temporary listener')
+    return child.pid
+
+def iperf3_server_stop(pid):
+    try:os.kill(int(pid),signal.SIGTERM)
+    except ProcessLookupError:pass
+
+def iperf3_client(address,port,reverse=False):
+    address=str(ipaddress.ip_address(address));port=int(port)
+    binary=shutil.which('iperf3')
+    if not binary:raise RuntimeError('iperf3 is not installed on this tunnel endpoint; update the server installer first')
+    args=[binary,'-c',address,'-p',str(port),'-t','3','-O','1','--connect-timeout','3000','-J']
+    if reverse:args.append('-R')
+    result=subprocess.run(args,capture_output=True,text=True,timeout=12)
+    if result.returncode:raise RuntimeError((result.stderr or result.stdout or 'iperf3 client failed').strip()[-500:])
+    try:report=json.loads(result.stdout);end=report['end'];received=end.get('sum_received') or end.get('sum') or {}
+    except (ValueError,KeyError,TypeError) as error:raise RuntimeError('iperf3 returned an unreadable throughput result') from error
+    bps=float(received.get('bits_per_second',0))
+    if bps<=0:raise RuntimeError('iperf3 completed without reporting received throughput')
+    return round(bps/1_000_000,2)
+
+def remote_iperf3(server,payload):
+    code='''import json,ipaddress,os,shutil,signal,subprocess,sys,time\nd=json.load(sys.stdin);op=d.get("op");out={}\nif op=="start":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n if not 1024<=port<=65535:raise ValueError("iperf3 test port is outside the allowed range")\n child=subprocess.Popen([binary,"-s","-1","-B",addr,"-p",str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True);time.sleep(.2)\n if child.poll() is not None:raise RuntimeError("iperf3 could not start its temporary listener")\n out={"pid":child.pid}\nelif op=="stop":\n try:os.kill(int(d["pid"]),signal.SIGTERM)\n except ProcessLookupError:pass\n out={"ok":True}\nelif op=="client":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n args=[binary,"-c",addr,"-p",str(port),"-t","3","-O","1","--connect-timeout","3000","-J"]\n if d.get("reverse"):args.append("-R")\n result=subprocess.run(args,capture_output=True,text=True,timeout=12)\n if result.returncode:raise RuntimeError((result.stderr or result.stdout or "iperf3 client failed").strip()[-500:])\n report=json.loads(result.stdout);end=report["end"];received=end.get("sum_received") or end.get("sum") or {};bps=float(received.get("bits_per_second",0))\n if bps<=0:raise RuntimeError("iperf3 completed without reporting received throughput")\n out={"mbps":round(bps/1000000,2)}\nelse:raise ValueError("unsupported iperf3 operation")\nprint(json.dumps(out))'''
+    remote='runuser -u tunnelmgr -- /usr/bin/python3 -c '+shlex.quote(code)
+    result=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=25)
+    if result.returncode:raise RuntimeError((result.stderr or result.stdout or 'remote iperf3 command failed')[-800:])
+    try:data=json.loads(result.stdout)
+    except ValueError as error:raise RuntimeError('remote iperf3 endpoint returned invalid data') from error
+    if data.get('error'):raise RuntimeError(data['error'])
+    return data
+
+def tunnel_iperf_operation(server_id,servers,operation,**values):
+    payload={'op':operation,**values}
+    if server_id=='local':
+        if operation=='start':return {'pid':iperf3_server_start(payload['address'],payload['port'])}
+        if operation=='stop':iperf3_server_stop(payload['pid']);return {'ok':True}
+        if operation=='client':return {'mbps':iperf3_client(payload['address'],payload['port'],payload.get('reverse',False))}
+        raise ValueError('unsupported local iperf3 operation')
+    return remote_iperf3(servers[server_id],payload)
+
+def tunnel_speedtest(data):
+    ident=data.get('id');a_id=data.get('server_a');b_id=data.get('server_b');checked=int(time.time())
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('invalid tunnel id for speed test')
+    if not isinstance(a_id,str) or not isinstance(b_id,str) or a_id==b_id:raise ValueError('speed test requires two different tunnel endpoints')
+    servers={item['id']:item for item in server_rows()}
+    for sid in (a_id,b_id):
+        if sid!='local' and sid not in servers:raise ValueError('speed test endpoint is not managed')
+    seen={};port=secrets.randbelow(18000)+44000
+    def supports_speedtest(item):
+        meta=item.get('metadata') or {}
+        if meta.get('manager')=='Backhaul':return meta.get('carrier')=='tun'
+        if meta.get('transport') in ('erspan','gretap','geneve','vxlan'):return False
+        return bool(meta.get('tun_local'))
+    def endpoint(sid):
+        if sid in seen:return seen[sid]
+        last=None
+        for attempt in range(6):
+            try:
+                if sid=='local':item=find(ident)
+                else:item=next((row for row in server_remote(servers[sid],{'op':'list'}).get('items',[]) if row.get('id')==ident),None)
+                if not item:raise ValueError('tunnel is not registered on '+sid)
+                if not supports_speedtest(item):seen[sid]=(item,None);return seen[sid]
+                if sid=='local':
+                    interface=tunnel_interface(item);item['interface_addresses']=interface_ip_addresses(interface) if interface else []
+                address=_interface_ip(item)
+                if address:seen[sid]=(item,address);return seen[sid]
+                last=RuntimeError('could not read the internal IP from tunnel interface '+str(tunnel_interface(item)))
+            except Exception as error:last=error
+            if attempt<5:time.sleep(.8)
+        raise RuntimeError(str(last or 'internal tunnel IP is unavailable'))
+    running=[]
+    try:
+        a_item,a_ip=endpoint(a_id);b_item,b_ip=endpoint(b_id)
+        if not supports_speedtest(a_item) or not supports_speedtest(b_item):
+            result={'state':'unsupported','a_server':a_id,'b_server':b_id,'a_local_ip':a_ip,'b_local_ip':b_ip,'checked_at':checked}
+            save_tunnel_speedtest(ident,result)
+            return result
+        def measure(source_id,dest_id,dest_ip,reverse):
+            chosen_port=port+int(reverse)
+            server=tunnel_iperf_operation(dest_id,servers,'start',address=dest_ip,port=chosen_port);running.append((dest_id,server['pid']))
+            return float(tunnel_iperf_operation(source_id,servers,'client',address=dest_ip,port=chosen_port,reverse=reverse)['mbps'])
+        a_to_b=measure(a_id,b_id,b_ip,False)
+        b_to_a=measure(a_id,b_id,b_ip,True)
+        result={'state':'complete','a_server':a_id,'b_server':b_id,'a_local_ip':a_ip,'b_local_ip':b_ip,
+                'a_to_b_mbps':a_to_b,'b_to_a_mbps':b_to_a,'checked_at':checked,'duration_seconds':8}
+    except Exception as error:
+        result={'state':'error','a_server':a_id,'b_server':b_id,'a_local_ip':seen.get(a_id,(None,None))[1],
+                'b_local_ip':seen.get(b_id,(None,None))[1],'checked_at':checked,'error':str(error)[-500:]}
+    finally:
+        for sid,pid in reversed(running):
+            try:tunnel_iperf_operation(sid,servers,'stop',pid=pid)
+            except Exception:pass
+    save_tunnel_speedtest(ident,result)
+    return result
 
 def probe_tunnel_links(local_items,remote_statuses,servers):
     endpoints=[]
@@ -1643,13 +1757,13 @@ def server(host,port):
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
                     statuses=list(MONITOR_SERVERS)
-                local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()]
-                remote=[dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])]
+                local=attach_speedtests([dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()])
+                remote=attach_speedtests([dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])])
                 return self.send(200,{"items":[*local,*remote]})
-            if route=="/api/v1/tunnels":return self.send(200,{"items":rows()})
+            if route=="/api/v1/tunnels":return self.send(200,{"items":attach_speedtests(rows())})
             if route=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
             if route=="/api/v1/servers/status":
-                with MONITOR_LOCK:statuses=list(MONITOR_SERVERS)
+                with MONITOR_LOCK:statuses=[dict(item,tunnels=attach_speedtests(item.get("tunnels",[]))) for item in MONITOR_SERVERS]
                 return self.send(200,{"items":statuses})
             if route=="/api/v1/servers/resources":
                 with MONITOR_LOCK:resources=[dict(item) for item in MONITOR_RESOURCES]
@@ -1687,6 +1801,7 @@ def server(host,port):
                     item['tun_addresses']=item['interface_addresses']
                     with MONITOR_LOCK:health=MONITOR_TUNNELS.get(ident)
                     item["health"]=health if health is not None else tunnel_health(item)
+                    item["speedtest"]=tunnel_speedtest_rows().get(ident)
                     return self.send(200,item)
                 except Exception as e:return self.send(502,{"error":str(e),"item":item})
             if len(bits)==5 and bits[:3]==["api","v1","tunnels"] and bits[4]=="logs":
@@ -1909,10 +2024,15 @@ def server(host,port):
                     return self.send(200,install_remote(srv))
                 except Exception as e:return self.send(502,{"error":str(e)})
             operator_action=re.fullmatch(r"/api/v1/tunnels/[a-z0-9_-]+/(start|stop|restart|health|delete)",self.path)
-            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
+            speedtest_action=re.fullmatch(r"/api/v1/tunnels/([a-z0-9_-]+)/speedtest",self.path)
+            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
             if role!="admin" and (self.path!="/api/v1/mesh/plan" and not (role=="operator" and (operator_action or operator_create))):
                 return self.send(403,{"error":"insufficient permissions"})
             try:
+                if speedtest_action:
+                    data=self.body()
+                    if data.get('id')!=speedtest_action[1]:raise ValueError('speed test tunnel ID does not match request path')
+                    with SPEEDTEST_LOCK:return self.send(200,tunnel_speedtest(data))
                 if self.path=="/api/v1/admin/accounts":
                     data=self.body()
                     action=data.get("action")
@@ -1980,7 +2100,9 @@ def server(host,port):
                         response=privileged({"op":"profile","group":"network","id":native,"action":{"status":"status"}.get(op,op)} if native else {"op":op,"id":ident})
                     if not response.get("ok",op=="status"):return self.send(400,response)
                     if op=="delete":
-                        with db() as c:c.execute("DELETE FROM tunnels WHERE id=?",(ident,))
+                        with db() as c:
+                            c.execute("DELETE FROM tunnels WHERE id=?",(ident,))
+                            c.execute("DELETE FROM tunnel_speedtests WHERE id=?",(ident,))
                     return self.send(200,{"ok":True,"id":ident,"operation":op,**response})
                 return self.send(404,{"error":"not found"})
             except Exception as e:return self.send(400,{"error":str(e)})

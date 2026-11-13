@@ -1,3 +1,9 @@
+## avaTUN 0.2.6
+
+- Install iperf3 with the server installer and automatically measure TCP throughput in both directions after tunnel creation or reconfiguration.
+- Show the latest approximate throughput in the tunnel table and cards.
+- Show Backhaul TUN/IPX internal addresses read from the actual TUN interfaces, and use those addresses for reachability checks.
+
 ## avaTUN 0.2.5
 
 - Generate tunnel-specific default IKE identities so multiple IPsec tunnels between the same servers cannot select the wrong CHILD_SA traffic selectors.
