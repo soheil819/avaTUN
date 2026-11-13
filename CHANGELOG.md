@@ -1,3 +1,7 @@
+## avaTUN 0.1.70
+- Add a GitHub panel updater action to the central server row and a visible admin notice when a newer version is available.
+- Check GitHub after admin login and refresh the stored update status while the panel remains open; retain the six-hour systemd check.
+
 ## avaTUN 0.1.69
 - Read each managed tunnel's local and peer IP from its actual network interface and send health pings through that interface.
 - Probe IPsec using its configured inner addresses and source IP because these profiles assign addresses to loopback instead of creating a tunnel device.
