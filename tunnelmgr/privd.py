@@ -262,12 +262,14 @@ def handle(c):
             path=Path('/etc/backhaul/secrets')/(ident+'.'+kind)
             if action=='create':
                 value=req.get('value')
-                if not isinstance(value,str) or not 16<=len(value)<=4096 or not re.fullmatch(r'[A-Za-z0-9_=-]+',value):raise ValueError('invalid shared secret')
+                if not isinstance(value,str) or not 16<=len(value)<=4096 or not value.isascii():raise ValueError('invalid shared secret')
                 if kind=='psk':
                     import base64
                     try:
                         if len(base64.b64decode(value,validate=True))!=32:raise ValueError()
                     except Exception as e:raise ValueError('IPX PSK must encode exactly 32 random bytes') from e
+                elif not re.fullmatch(r'[A-Za-z0-9_=-]+',value):
+                    raise ValueError('invalid shared secret')
                 path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
                 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
                 with os.fdopen(fd,'w') as f:f.write(value+'\n')

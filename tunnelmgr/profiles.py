@@ -28,6 +28,8 @@ def validate(group, cfg):
         validate_routing(cfg)
         return
     iface(cfg['interface'])
+    if kind in ('gre','ipip','gretap','gre-fou','ipip-fou','l2tpv3') and ('inner_local' not in cfg or 'inner_peer' not in cfg):
+        raise ValueError('این نوع تونل به IP داخلی هر دو سمت نیاز دارد؛ برای نمونه 10.250.0.1/30 و 10.250.0.2/30 را وارد کن.')
     if kind=='openvpn':
         if cfg.get('role') not in ('server','client'):raise ValueError('OpenVPN role must be server or client')
         local=ipaddress.IPv4Interface(cfg['inner_local']);peer=ipaddress.IPv4Interface(cfg['inner_peer'])
