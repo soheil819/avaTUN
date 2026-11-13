@@ -20,11 +20,23 @@ def run_tc(*args):
         raise RuntimeError(result.stderr.strip() or 'tc command failed')
 
 def strongswan_unit():
-    for unit in ('strongswan.service','strongswan-starter.service','strongswan-swanctl.service'):
+    # Network profiles are managed through swanctl/VICI.  The legacy starter
+    # unit may run charon without exposing the VICI socket required by swanctl.
+    for unit in ('strongswan.service','strongswan-swanctl.service'):
         result=subprocess.run(['/usr/bin/systemctl','show',unit,'-p','LoadState','-p','UnitFileState'],capture_output=True,text=True,timeout=5)
         fields=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
         if result.returncode==0 and fields.get('LoadState')=='loaded' and fields.get('UnitFileState')!='masked':return unit
-    raise RuntimeError('No usable StrongSwan systemd unit is installed; install charon-systemd or strongswan-starter.')
+    raise RuntimeError('The swanctl/VICI StrongSwan service is missing; run the installer to install and enable charon-systemd.')
+
+def run_swanctl(*args,timeout=20):
+    result=subprocess.run(['/usr/sbin/swanctl',*args],capture_output=True,text=True,timeout=timeout)
+    if result.returncode:
+        detail=(result.stderr or result.stdout).strip()
+        if 'charon.vici' in detail or "connecting to 'default' URI failed" in detail:
+            raise RuntimeError('swanctl cannot connect to StrongSwan VICI (/var/run/charon.vici); ensure charon-systemd.service is active')
+        useful=[line.strip() for line in detail.splitlines() if re.search(r'(error:|failed|cannot|could not|not found|missing)',line,re.I) and not line.lstrip().startswith('--')]
+        raise RuntimeError('swanctl '+ ' '.join(args)+' failed: '+('; '.join(useful[-4:]) or detail[-900:] or 'unknown error'))
+    return result
 
 def remove_fou(kind, port):
     proto={'gre-fou':47,'ipip-fou':4,'sit-fou':41}[kind]
@@ -304,9 +316,9 @@ def apply(profile, up, profile_name=None):
         unit=strongswan_unit()
         service=subprocess.run(['/usr/bin/systemctl','enable','--now',unit],capture_output=True,text=True,timeout=30)
         if service.returncode:raise RuntimeError(f"Could not enable {unit}: {(service.stderr or service.stdout).strip() or 'systemctl failed'}")
-        subprocess.run(['/usr/sbin/swanctl','--load-all'],check=True,timeout=20)
+        run_swanctl('--load-all')
         subprocess.run(['/usr/sbin/ip','address','replace',str(local)+'/32','dev','lo'],check=True)
-        if profile.get('role')=='client':subprocess.run(['/usr/sbin/swanctl','--initiate','--ike',safe,'--child',safe],check=True,timeout=45)
+        if profile.get('role')=='client':run_swanctl('--initiate','--ike',safe,'--child',safe,timeout=45)
     elif kind=='esp':
         name=iface(profile['interface'])
         def secure_run(*args):

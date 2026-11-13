@@ -1,3 +1,7 @@
+## avaTUN 0.1.68
+- Install and activate the VICI-capable `charon-systemd` daemon required by `swanctl`; stop the legacy starter unit when migrating.
+- Fail with a direct VICI socket error instead of exposing `swanctl` usage output.
+
 ## avaTUN 0.1.67
 - Make managed HAProxy TCP forwards listen on `127.0.0.1` in addition to their selected address. IPv4 wildcard and loopback listeners already cover localhost.
 - Reject ambiguous duplicate localhost ports when multiple managed rules would claim the same loopback port.

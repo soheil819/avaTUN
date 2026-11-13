@@ -120,9 +120,8 @@ command -v openvpn >/dev/null 2>&1 || PACKAGES="$PACKAGES openvpn"
 command -v ocserv >/dev/null 2>&1 || PACKAGES="$PACKAGES ocserv"
 command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
 command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
-if ! systemctl list-unit-files --no-legend 2>/dev/null | awk '$1 == "strongswan.service" || $1 == "strongswan-starter.service" { found=1 } END { exit !found }'; then
-    PACKAGES="$PACKAGES charon-systemd"
-fi
+CHARON_SYSTEMD_STATUS=$(dpkg-query -W -f='${Status}' charon-systemd 2>/dev/null || true)
+case "$CHARON_SYSTEMD_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES charon-systemd" ;; esac
 command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
@@ -131,6 +130,25 @@ if [ -n "$PACKAGES" ]; then
     command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES
+fi
+
+# swanctl requires VICI.  Prefer charon-systemd over the legacy starter, which
+# may be installed and active without creating /var/run/charon.vici.
+if systemctl list-unit-files --no-legend 2>/dev/null | awk '$1 == "strongswan.service" { found=1 } END { exit !found }'; then
+    systemctl disable --now strongswan-starter.service >/dev/null 2>&1 || true
+    systemctl enable --now strongswan.service
+    if ! /usr/sbin/swanctl --version --daemon >/dev/null 2>&1; then
+        systemctl restart strongswan.service
+        swanctl_ready=0
+        for attempt in $(seq 1 20); do
+            if /usr/sbin/swanctl --version --daemon >/dev/null 2>&1; then swanctl_ready=1; break; fi
+            sleep 0.5
+        done
+        [ "$swanctl_ready" -eq 1 ] || { echo 'StrongSwan VICI socket is unavailable; charon-systemd did not start correctly.' >&2; exit 1; }
+    fi
+else
+    echo 'charon-systemd did not provide strongswan.service; swanctl/VICI IPsec cannot be enabled.' >&2
+    exit 1
 fi
 
 # Preload and persist kernel modules used by the tunnel types exposed in the
