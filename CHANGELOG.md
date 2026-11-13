@@ -1,3 +1,7 @@
+## avaTUN 0.1.49
+
+- Include `github-update.py` in managed-server bootstrap bundles so slave installers receive every file referenced by the installer.
+
 ## avaTUN 0.1.48
 
 - Every installer run stops Backhaul services, removes previous installed Backhaul cores and manager entry points, installs the manifest-verified bundled core, and restarts previously active managed tunnels while preserving tunnel configs and state.

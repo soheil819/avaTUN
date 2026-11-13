@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.48"
+APP_VERSION="0.1.49"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -379,7 +379,7 @@ def install_remote(server):
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
-            for name in ("install-preview.sh","mesh-deploy.py","mesh-worker.py"):
+            for name in ("install-preview.sh","mesh-deploy.py","mesh-worker.py","github-update.py"):
                 p=root/"scripts"/name
                 if p.is_file():tf.add(p,arcname=f"scripts/{name}")
         payload=pathlib.Path(bundle.name).read_bytes()
