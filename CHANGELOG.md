@@ -1,3 +1,10 @@
+## avaTUN 0.1.53
+
+- Allocate a random unused native tunnel interface and a conflict-free private /30 after checking addresses, routes, and managed tunnels on both selected servers.
+- Route native tunnel create and edit through a coordinated two-server operation with rollback if either endpoint fails.
+- Fix native GRE stop/update ordering so an existing interface is removed before the start-time collision check; verify cleanup before replacing a profile.
+- Report the actual non-RFC1918 prefix in routing validation errors.
+
 ## avaTUN 0.1.52
 
 - Read native tunnel interface names from the native form so the Backhaul `eth0` field cannot be used for GRE/IPIP devices.

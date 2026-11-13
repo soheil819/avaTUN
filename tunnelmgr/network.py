@@ -54,7 +54,7 @@ def openconnect_server_config(profile, name, base, users, runtime):
 
 def private(net):
     if not any(net.subnet_of(ip.IPv4Network(x)) for x in ('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16')):
-        raise ValueError('expected RFC1918 subnet')
+        raise ValueError(f'expected RFC1918 subnet, got {net}; use a private IPv4 prefix')
 
 def apply(profile, up, profile_name=None):
     kind=profile['kind']
@@ -66,7 +66,9 @@ def apply(profile, up, profile_name=None):
             if sit_local==sit_peer:raise ValueError('SIT outer endpoints must differ')
             name=shared_sit_name(sit_local,sit_peer)
         else:name=iface(profile['interface'])
-        if not sit_shared and pathlib.Path('/sys/class/net',name).exists():
+        # Existing links are an error only on start. Stop/update must be able
+        # to reach the cleanup path while the old interface still exists.
+        if up and not sit_shared and pathlib.Path('/sys/class/net',name).exists():
             raise ValueError(f'network interface {name} already exists; choose an unused tunnel interface')
         created_sit=False
         mirror=iface(profile['mirror_interface']) if kind=='erspan' and profile.get('mirror_interface') else None
@@ -81,7 +83,11 @@ def apply(profile, up, profile_name=None):
                     legacy=profile.get('interface')
                     if legacy and legacy!=name:subprocess.run(['/usr/sbin/ip','tunnel','del',legacy],capture_output=True)
                 return
-            subprocess.run(['/usr/sbin/ip','tunnel' if kind.startswith('sit-6to4') or kind=='sit-isatap' else 'link','del',name],capture_output=True)
+            link=pathlib.Path('/sys/class/net',name)
+            if link.exists():
+                result=subprocess.run(['/usr/sbin/ip','tunnel' if kind.startswith('sit-6to4') or kind=='sit-isatap' else 'link','del',name],capture_output=True,text=True)
+                if result.returncode and link.exists():raise RuntimeError(result.stderr.strip() or f'could not remove managed tunnel interface {name}')
+                if link.exists():raise RuntimeError(f'managed tunnel interface {name} still exists after stop; profile was not replaced')
             if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'])
             return
         if kind=='sit-6to4':
