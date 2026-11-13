@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.54"
+APP_VERSION="0.1.55"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -113,11 +113,11 @@ def erspan_health(item):
     except Exception as e:return {'state':'down','reachable':False,'checked_at':checked,'rtt_ms':None,'probe_error':str(e)[-500:]}
 
 def tunnel_health(item):
-    meta=item.get("metadata",{});peer=meta.get("tun_remote");iface=meta.get("tun_name")
+    meta=item.get("metadata",{});ipx=meta.get('carrier')=='tun' and meta.get('encapsulation')=='ipx';peer=meta.get("peer_ip") if ipx else meta.get("tun_remote");iface=None if ipx else meta.get("tun_name")
     if meta.get('transport')=='erspan':return erspan_health(item)
     if not peer:return {"state":"monitor-only","reachable":None,"checked_at":int(time.time())}
     peer=peer.split("/",1)[0]
-    local=meta.get("tun_local")
+    local=meta.get("local_ip") if ipx else meta.get("tun_local")
     if meta.get("transport") in ("ipsec-ikev2","ipsec-esp-udp","esp"):iface=None
     try:
         result=privileged({"op":"probe","id":item["id"],"peer":peer,"interface":None,"local":local})

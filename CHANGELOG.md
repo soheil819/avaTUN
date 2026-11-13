@@ -1,3 +1,8 @@
+## avaTUN 0.1.55
+
+- Show Backhaul TUN/IPX outer endpoint IPs on mesh links and probe the configured peer IP from the configured local source IP.
+- Show inner TUN peer IPs and their measured ping on mesh links; make missing or incomplete address pairs explicit.
+
 ## avaTUN 0.1.54
 
 - Show the auto-assignment behavior in native tunnel forms and make allocator-owned interface and inner IP fields read-only where the central panel assigns them.
