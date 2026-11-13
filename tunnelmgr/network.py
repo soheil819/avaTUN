@@ -19,6 +19,13 @@ def run_tc(*args):
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or 'tc command failed')
 
+def strongswan_unit():
+    for unit in ('strongswan.service','strongswan-starter.service','strongswan-swanctl.service'):
+        result=subprocess.run(['/usr/bin/systemctl','show',unit,'-p','LoadState','-p','UnitFileState'],capture_output=True,text=True,timeout=5)
+        fields=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+        if result.returncode==0 and fields.get('LoadState')=='loaded' and fields.get('UnitFileState')!='masked':return unit
+    raise RuntimeError('No usable StrongSwan systemd unit is installed; install charon-systemd or strongswan-starter.')
+
 def remove_fou(kind, port):
     proto={'gre-fou':47,'ipip-fou':4,'sit-fou':41}[kind]
     subprocess.run(['/usr/sbin/ip','fou','del','port',str(int(port)),'ipproto',str(proto)],capture_output=True)
@@ -294,7 +301,9 @@ def apply(profile, up, profile_name=None):
         conf.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
         fd=os.open(conf,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
         with os.fdopen(fd,'w') as f:f.write(text)
-        subprocess.run(['/usr/bin/systemctl','enable','--now','strongswan.service'],check=True,timeout=30)
+        unit=strongswan_unit()
+        service=subprocess.run(['/usr/bin/systemctl','enable','--now',unit],capture_output=True,text=True,timeout=30)
+        if service.returncode:raise RuntimeError(f"Could not enable {unit}: {(service.stderr or service.stdout).strip() or 'systemctl failed'}")
         subprocess.run(['/usr/sbin/swanctl','--load-all'],check=True,timeout=20)
         subprocess.run(['/usr/sbin/ip','address','replace',str(local)+'/32','dev','lo'],check=True)
         if profile.get('role')=='client':subprocess.run(['/usr/sbin/swanctl','--initiate','--ike',safe,'--child',safe],check=True,timeout=45)

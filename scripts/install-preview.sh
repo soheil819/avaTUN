@@ -120,6 +120,9 @@ command -v openvpn >/dev/null 2>&1 || PACKAGES="$PACKAGES openvpn"
 command -v ocserv >/dev/null 2>&1 || PACKAGES="$PACKAGES ocserv"
 command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
 command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
+if ! systemctl list-unit-files --no-legend 2>/dev/null | awk '$1 == "strongswan.service" || $1 == "strongswan-starter.service" { found=1 } END { exit !found }'; then
+    PACKAGES="$PACKAGES charon-systemd"
+fi
 command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"

@@ -1,3 +1,8 @@
+## avaTUN 0.1.64
+
+- Automatically allocate conflict-free L2TPv3 tunnel/session IDs and UDP ports after inspecting both servers; keep the chosen values while editing.
+- Install the StrongSwan systemd daemon when neither supported service exists and start the unit actually installed on each server.
+
 ## avaTUN 0.1.63
 
 - Automatically generate and share a strong PSK for paired IPsec tunnels, derive default IKE identities from each peer's outer IP, and keep existing secrets when editing.
