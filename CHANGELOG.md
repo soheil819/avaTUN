@@ -1,3 +1,8 @@
+## avaTUN 0.1.54
+
+- Show the auto-assignment behavior in native tunnel forms and make allocator-owned interface and inner IP fields read-only where the central panel assigns them.
+- Convert Unicode decimal digits to ASCII English digits in typed fields and visible UI text, including pasted content and dynamically rendered values.
+
 ## avaTUN 0.1.53
 
 - Allocate a random unused native tunnel interface and a conflict-free private /30 after checking addresses, routes, and managed tunnels on both selected servers.
