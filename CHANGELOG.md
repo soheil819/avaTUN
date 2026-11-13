@@ -1,3 +1,36 @@
+## avaTUN 0.1.35
+
+- Fixed the Telegram live resource widget so CPU, RAM, disk, and swap percentages use the correct metric keys instead of rendering as zero.
+
+## avaTUN 0.1.34
+
+- منابع سرورها اکنون به شکل ویجت تعاملی و زنده داخل پیام خصوصی ربات تلگرام نمایش داده می‌شوند.
+- CPU، RAM، دیسک، Swap و نرخ دانلود/آپلود در یک کارت جمع‌وجور برای هر سرور نمایش داده می‌شود؛ پیمایش بین سرورها، تازه‌سازی دستی و تازه‌سازی خودکار ۱۵ ثانیه‌ای اضافه شد.
+- درخواست‌های ویجت به کاربران مجاز و چت خصوصی محدود شده‌اند و پاسخ خطا نیز در همان ویجت نمایش داده می‌شود.
+
+## avaTUN 0.1.33
+
+- Corrected Python 3.14 HTTPS handler construction for the IPv4-only Telegram transport and verified bot startup behavior.
+
+## avaTUN 0.1.32
+
+- Fixed slow Telegram bot responses on IPv4-only servers by forcing Telegram HTTPS connections to use IPv4 instead of waiting for unreachable IPv6 routes.
+- Replaced the Telegram settings token suffix with a live service/bot readiness indicator and a short post-save status check that reports startup, ready, retrying, or stopped state.
+- Added a secret-free bot health status file and exposed its freshness and systemd state through the restricted settings API.
+
+## avaTUN 0.1.31
+
+- The Telegram bot now reads network snapshots from one authenticated panel endpoint and processes waiting updates before monitoring work, reducing command response delay.
+- Added admin-only panel settings for replacing the Telegram bot token and editing numeric Telegram administrator IDs. Tokens are never returned to the browser; saving writes the protected server config and restarts the bot service.
+- Extended the restricted privileged helper only for validated Telegram settings, with atomic config replacement and preserved viewer/panel credentials.
+
+## avaTUN 0.1.30
+
+- Added a private Telegram management bot with server resources, tunnel status, confirmed two-sided operations, live diagnostics, and HAProxy controls.
+- Added persistent outage/recovery and high-resource alerts, daily reports, viewer/admin roles, and operation audit records.
+- Added a monitored tunnel snapshot API and reversible HAProxy rule enable/disable actions.
+- Included the optional Telegram service in the installer.
+
 ## avaTUN 0.1.29
 
 - Connected Mesh cables underneath the server SVGs so transparent margins cannot leave detached endpoints.

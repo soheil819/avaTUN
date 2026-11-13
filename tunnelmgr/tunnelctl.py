@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.29"
+APP_VERSION="0.1.35"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -19,6 +19,7 @@ ID=re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 SESSIONS={}
 MONITOR_LOCK=threading.Lock();MONITOR_TUNNELS={};MONITOR_SERVERS=[];MONITOR_RESOURCES=[]
 GEOIP_CACHE={}
+FORWARD_LOCK=threading.Lock()
 FIELDS={"listen","peer","secret_file","tun_name","tun_local","tun_remote","tun_mtu","health_port","replace"}
 
 def db():
@@ -444,7 +445,9 @@ def normalize_forward(data,server_id):
         backends.append({"tunnel_id":tunnel_id,"address":address,"weight":weight,"role":role})
     if algorithm=="first" and sum(1 for backend in backends if backend["role"]=="primary")!=1:
         raise ValueError("در حالت Failover دقیقاً یک مسیر را Primary انتخاب کن؛ بقیه مسیرها Backup هستند")
-    return {"id":ident,"server_id":server_id,"listen_ip":listen,"listen_port":listen_port,"backend_port":backend_port,"algorithm":algorithm,"proxy_protocol":proxy_protocol,"check_send_proxy":check_send_proxy,"shutdown_sessions":shutdown_sessions,"backends":backends}
+    enabled=data.get("enabled",True)
+    if type(enabled) is not bool:raise ValueError("وضعیت فعال بودن قانون نامعتبر است")
+    return {"enabled":enabled,"id":ident,"server_id":server_id,"listen_ip":listen,"listen_port":listen_port,"backend_port":backend_port,"algorithm":algorithm,"proxy_protocol":proxy_protocol,"check_send_proxy":check_send_proxy,"shutdown_sessions":shutdown_sessions,"backends":backends}
 
 def _prefixes(value):
     if isinstance(value,str):value=[x.strip() for x in value.split(',') if x.strip()]
@@ -566,7 +569,7 @@ def delete_routing_link(ident):
     return {'ok':True,'id':ident}
 
 def apply_forward_set(server_id,rules):
-    payload=[{k:v for k,v in rule.items() if k!="server_id"} for rule in rules]
+    payload=[{k:v for k,v in rule.items() if k not in ("server_id","enabled")} for rule in rules if rule.get("enabled",True)]
     if server_id=="local":result=privileged({"op":"haproxy","id":"forwards","action":"apply","rules":payload})
     else:
         server=next((s for s in server_rows() if s["id"]==server_id),None)
@@ -574,6 +577,26 @@ def apply_forward_set(server_id,rules):
         result=server_remote(server,{"op":"forward-apply","rules":payload})
     if not result.get("ok"):raise RuntimeError(result.get("error",result.get("status","HAProxy apply failed")))
     return result
+
+def set_forward_enabled(ident, server_id, enabled):
+    if type(enabled) is not bool:
+        raise ValueError("enabled must be a boolean")
+    current = forward_rows()
+    existing = next((item for item in current if item["id"] == ident and item.get("server_id", "local") == server_id), None)
+    if not existing:
+        raise ValueError("قانون پورت‌فوروارد روی این سرور پیدا نشد")
+    updated = {**existing, "enabled": enabled}
+    previous = [item for item in current if item.get("server_id", "local") == server_id]
+    desired = [updated if item["id"] == ident else item for item in previous]
+    apply_forward_set(server_id, desired)
+    try:
+        with db() as connection:
+            connection.execute("UPDATE port_forwards SET config=? WHERE id=?", (json.dumps(updated), ident))
+    except Exception:
+        apply_forward_set(server_id, previous)
+        raise
+    return {"ok": True, "item": updated}
+
 
 def forward_service_status(server_id):
     if server_id=="local":return privileged({"op":"haproxy","id":"forwards","action":"status"})
@@ -1186,6 +1209,19 @@ def server(host,port):
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'panel-tls','id':'panel-tls','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
+            if self.path=="/api/v1/settings/telegram":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:return self.send(200,privileged({'op':'telegram-config','id':'telegram-config','action':'status'}))
+                except Exception as e:return self.send(502,{'error':str(e)})
+            if self.path=="/api/v1/telegram/snapshot":
+                with MONITOR_LOCK:
+                    health=dict(MONITOR_TUNNELS)
+                    statuses=[dict(item) for item in MONITOR_SERVERS]
+                    resources=[dict(item) for item in MONITOR_RESOURCES]
+                local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()]
+                remote=[dict(tunnel,server_id=status["id"]) for status in statuses if status["id"]!="local" for tunnel in status.get("tunnels",[])]
+                servers=[{k:v for k,v in server.items() if k!="identity"}|{"has_identity":bool(server.get("identity"))} for server in server_rows()]
+                return self.send(200,{"servers":servers,"statuses":statuses,"tunnels":[*local,*remote],"resources":resources})
             if self.path=="/api/v1/routing":
                 if role not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})
                 return self.send(200,{"items":routing_rows()})
@@ -1195,6 +1231,13 @@ def server(host,port):
                 server_id=parse_qs(self.path.partition("?")[2]).get("server_id",["local"])[0]
                 if server_id!="local" and not ID.fullmatch(server_id):return self.send(400,{"error":"invalid server id"})
                 return self.send(200,{"items":forward_rows(),"service":forward_service_status(server_id)})
+            if self.path=="/api/v1/tunnels/snapshot":
+                with MONITOR_LOCK:
+                    health=dict(MONITOR_TUNNELS)
+                    statuses=list(MONITOR_SERVERS)
+                local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()]
+                remote=[dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])]
+                return self.send(200,{"items":[*local,*remote]})
             if self.path=="/api/v1/tunnels":return self.send(200,{"items":rows()})
             if self.path=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
             if self.path=="/api/v1/servers/status":
@@ -1270,17 +1313,30 @@ def server(host,port):
                     if result.get('error'):return self.send(400,result)
                     return self.send(202,result)
                 except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/settings/telegram":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:
+                    data=self.body()
+                    result=privileged({'op':'telegram-config','id':'telegram-config','action':'save',
+                        'bot_token':data.get('bot_token',''),'admin_ids':data.get('admin_ids')})
+                    if result.get('error'):return self.send(400,result)
+                    return self.send(202,result)
+                except Exception as e:return self.send(400,{'error':str(e)})
             if self.path=="/api/v1/forwards":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
+                FORWARD_LOCK.acquire()
                 try:
                     data=self.body();action=data.get("action");ident=data.get("id","");server_id=data.get("server_id","local")
                     if not isinstance(server_id,str) or (server_id!="local" and not ID.fullmatch(server_id)):raise ValueError("شناسهٔ سرور شنود نامعتبر است")
                     if server_id!="local" and not any(s["id"]==server_id for s in server_rows()):raise ValueError("سرور شنود در فهرست مدیریت‌شده‌ها نیست")
+                    if action=="set-enabled":
+                        return self.send(200,set_forward_enabled(ident,server_id,data.get("enabled")))
                     if action in ("create","update"):
                         config=normalize_forward(data,server_id)
                         current=forward_rows();exists=next((x for x in current if x["id"]==config["id"]),None)
                         if action=="create" and exists:raise ValueError("این شناسه از قبل ثبت شده است")
                         if action=="update" and (not exists or exists.get("server_id","local")!=server_id):raise ValueError("قانون پورت‌فوروارد روی این سرور پیدا نشد")
+                        if exists and "enabled" not in data:config["enabled"]=exists.get("enabled",True)
                         desired=[x for x in current if x.get("server_id","local")==server_id and x["id"]!=config["id"]]+[config]
                         apply_forward_set(server_id,desired)
                         with db() as c:c.execute("INSERT INTO port_forwards(id,config) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config",(config["id"],json.dumps(config)))
@@ -1295,6 +1351,7 @@ def server(host,port):
                         return self.send(200,{"ok":True})
                     raise ValueError("عملیات پورت‌فوروارد نامعتبر است")
                 except Exception as e:return self.send(400,{"error":str(e)})
+                finally:FORWARD_LOCK.release()
             remote_update=re.fullmatch(r"/api/v1/servers/([a-z0-9][a-z0-9_-]{0,47})/tunnels/([a-z0-9][a-z0-9_-]{0,47})/update",self.path)
             if remote_update:
                 if role not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})

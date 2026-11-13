@@ -78,6 +78,9 @@ install -d -o root -g root -m 0755 /opt/tunnelmgr/tunnelmgr /opt/tunnelmgr/web /
 install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets
 install -d -o root -g root -m 0755 /opt/tunnelmgr/packaging/systemd
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnelctl.py" /opt/tunnelmgr/tunnelmgr/tunnelctl.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_bot.py" /opt/tunnelmgr/tunnelmgr/telegram_bot.py
+install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-telegram.service" /etc/systemd/system/avatun-telegram.service
+install -d -o root -g tunnelmgr -m 0750 /etc/avatun
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/openconnect_runner.py" /opt/tunnelmgr/tunnelmgr/openconnect_runner.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/routing.py" /opt/tunnelmgr/tunnelmgr/routing.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/topology.py" /opt/tunnelmgr/tunnelmgr/topology.py
@@ -197,5 +200,8 @@ else
 fi
 if [ "${AVATUN_INSTALL_DEFER_START:-0}" != "1" ]; then
     systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service
+    if [ -f /etc/avatun/telegram.json ] && systemctl is-enabled --quiet avatun-telegram.service; then
+        systemctl restart avatun-telegram.service
+    fi
     systemctl --no-pager status tunnelmgr.service
 fi

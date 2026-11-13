@@ -1,4 +1,32 @@
-# avaTUN
+# avaTUN · آواتان
+
+**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. این پروژه در مرحلهٔ بتا است.**
+
+avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید. امکانات در مرحلهٔ بتا هستند؛ پیش از استفادهٔ عملیاتی، روی محیط آزمایشی بررسی کنید.
+
+## نصب سریع
+
+روی Debian یا Ubuntu با دسترسی sudo اجرا کنید:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/scripts/install-from-github.sh | bash
+```
+
+این دستور مخزن عمومی را بدون نیاز به GitHub CLI یا ورود به حساب دریافت می‌کند، پیش‌نیازها را نصب می‌کند و در پایان نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. نصب‌کننده در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی می‌سازد. پورت پیش‌فرض پنل ۸۷۶۵ است.
+
+**بتا:** avaTUN هنوز در حال توسعه است. ابتدا روی سرور آزمایشی نصب کنید و برای دسترسی امن از HTTPS استفاده کنید.
+
+### English
+
+avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install on Debian or Ubuntu without GitHub authentication:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/scripts/install-from-github.sh | bash
+```
+
+The installer prints the panel URL and initial login credentials in the terminal. Test on non-production servers before operational use.
+
+---
 
 See [architecture](outputs/architecture-plan-fa.md) and [local run guide](docs/run-local-fa.md). avaTUN provides a password-based web dashboard, SQLite tunnel and server inventory, SSH-based remote installation and tunnel lifecycle actions, periodic ICMP health probes, and a topology view. Backhaul TUN integration uses the regular Backhaul manager installed on each endpoint.
 
@@ -20,15 +48,9 @@ For a two-ended link, create each endpoint on its server and reverse the local/p
 
 The routing page can configure paired BGP or OSPF profiles through FRR on both tunnel endpoints. BGP and OSPF export only the explicitly entered private prefixes; port-forward backends on routed remote networks are accepted only when covered by the matching far-side route profile. The routing daemon must be available through the system `frr` package.
 
-## Install
+## نصب از سورس
 
-The repository is private, so authenticate GitHub CLI on the Debian/Ubuntu server first (`gh auth login`). Then install directly from GitHub with one command:
-
-```sh
-gh api repos/soheil819/avaTUN/contents/scripts/install-from-github.sh --jq .content | base64 -d | bash
-```
-
-The GitHub bootstrap checks out the private repository and runs `install.sh` with sudo. The installer installs prerequisites and supported tunnel packages, adds a persistent 512 MiB swap file only when no swap is active, installs the services, creates the initial `admin` login, then starts the panel. It prints the panel URL and generated password once at the end; the password is not saved in a plaintext file. Set `PANEL_HOST` before the command to override the displayed address. If UFW is active, TCP port 8765 is allowed; any provider firewall must be configured separately. The default URL uses HTTP. HTTPS can be configured later in **Settings**.
+برای سورس موجود روی سرور، `sudo ./install.sh` همان نصب را بدون دریافت مخزن اجرا می‌کند. نصب‌کننده پیش‌نیازها و بسته‌های تونل پشتیبانی‌شده را نصب می‌کند، در صورت نبود Swap فعال یک Swap پایدار ۵۱۲ مگابایتی می‌سازد، سرویس‌ها را راه می‌اندازد و حساب اولیهٔ `admin` را ایجاد می‌کند. نشانی پنل و گذرواژهٔ تصادفی فقط در پایان ترمینال نمایش داده می‌شوند و گذرواژه در فایل متنی ذخیره نمی‌شود. برای تغییر نشانی نمایشی، `PANEL_HOST` را پیش از اجرا تنظیم کنید. اگر UFW فعال باشد، TCP پورت ۸۷۶۵ باز می‌شود؛ فایروال ارائه‌دهنده را جداگانه تنظیم کنید. پنل با HTTP شروع می‌شود و HTTPS از بخش **تنظیمات** قابل پیکربندی است.
 
 For a source checkout already on the server, `sudo ./install.sh` runs the same installation without fetching from GitHub.
 

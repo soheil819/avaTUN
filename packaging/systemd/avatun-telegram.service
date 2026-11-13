@@ -1,0 +1,23 @@
+[Unit]
+Description=avaTUN Telegram management and monitoring
+After=network-online.target tunnelmgr.service
+Wants=network-online.target
+ConditionPathExists=/etc/avatun/telegram.json
+
+[Service]
+Type=simple
+User=tunnelmgr
+Group=tunnelmgr
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/telegram_bot.py --config /etc/avatun/telegram.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tunnelmgr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

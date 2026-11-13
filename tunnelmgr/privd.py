@@ -313,6 +313,49 @@ def handle(c):
                 subprocess.run(['/usr/bin/systemctl','start','--no-block','avatun-panel-tls.service'],check=True,capture_output=True,text=True,timeout=10)
                 return send(c,{'ok':True,'state':'working','domain':domain.lower(),'port':port})
             raise ValueError('invalid panel TLS action')
+        if op=='telegram-config':
+            action=req.get('action');path=Path('/etc/avatun/telegram.json')
+            if action=='status':
+                config=json.loads(path.read_text()) if path.is_file() else {}
+                admins=config.get('admins',[])
+                status_path=Path('/var/lib/tunnelmgr/telegram-status.json')
+                bot_status={}
+                if status_path.is_file():
+                    try:bot_status=json.loads(status_path.read_text())
+                    except (OSError,ValueError):bot_status={}
+                service=subprocess.run(['/usr/bin/systemctl','show','avatun-telegram.service',
+                    '-p','ActiveState','-p','SubState','-p','MainPID','-p','Result'],
+                    text=True,capture_output=True,timeout=5)
+                service_values=dict(line.split('=',1) for line in service.stdout.splitlines() if '=' in line)
+                updated=float(bot_status.get('updated_at') or 0)
+                bot_state=bot_status.get('state','unknown')
+                if updated and time.time()-updated>30 and bot_state in ('starting','ready'):
+                    bot_state='stale'
+                return send(c,{'ok':True,'configured':bool(config.get('bot_token')),
+                    'admin_ids':admins if isinstance(admins,list) else [],'service_state':service_values.get('ActiveState','unknown'),
+                    'service_substate':service_values.get('SubState','unknown'),'bot_state':bot_state,
+                    'bot_updated_at':updated or None,'bot_error':bot_status.get('error')})
+            if action=='save':
+                token=req.get('bot_token','');admins=req.get('admin_ids')
+                if not isinstance(token,str) or len(token)>256:raise ValueError('توکن ربات معتبر نیست.')
+                if not isinstance(admins,list) or not 1<=len(admins)<=100 or any(type(user) is not int or user<=0 for user in admins):
+                    raise ValueError('حداقل یک شناسهٔ عددی معتبر مدیر وارد کن.')
+                if len(set(admins))!=len(admins):raise ValueError('شناسهٔ مدیر تکراری است.')
+                if token and not re.fullmatch(r'[0-9]{5,15}:[A-Za-z0-9_-]{20,}',token):raise ValueError('قالب توکن BotFather معتبر نیست.')
+                if not path.is_file():raise ValueError('پیکربندی اولیهٔ ربات پیدا نشد؛ ابتدا ربات را نصب کن.')
+                config=json.loads(path.read_text())
+                if token:config['bot_token']=token
+                config['admins']=admins
+                config.setdefault('viewers',[])
+                path.parent.mkdir(mode=0o750,parents=True,exist_ok=True)
+                tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(config,ensure_ascii=False,indent=2)+'\n')
+                os.chown(tmp,0,pwd.getpwnam('tunnelmgr').pw_gid);tmp.chmod(0o640);os.replace(tmp,path)
+                unit=Path('/etc/systemd/system/avatun-telegram.service')
+                if unit.is_file():
+                    subprocess.run(['/usr/bin/systemctl','restart','--no-block','avatun-telegram.service'],check=True,capture_output=True,text=True,timeout=10)
+                return send(c,{'ok':True,'configured':bool(config.get('bot_token')),
+                    'admin_ids':admins,'restarting':unit.is_file(),'restart_requested_at':time.time()})
+            raise ValueError('invalid Telegram config action')
         if op in ('start','stop','restart','health'):
             p=invoke([op,ident]);return send(c,{'ok':p.returncode==0,'output':(p.stdout+p.stderr)[-8000:]})
         if op=='delete':
