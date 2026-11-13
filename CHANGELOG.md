@@ -1,3 +1,7 @@
+## avaTUN 0.1.63
+
+- Automatically generate and share a strong PSK for paired IPsec tunnels, derive default IKE identities from each peer's outer IP, and keep existing secrets when editing.
+
 ## avaTUN 0.1.62
 
 - Allow `AF_NETLINK` in the panel service sandbox so IP address and route inspection works inside systemd.

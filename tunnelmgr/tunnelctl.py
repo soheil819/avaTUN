@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.1.62"
+APP_VERSION="0.1.63"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -870,6 +870,9 @@ def create_native_pair(data):
             if not all(existing.values()):raise ValueError('tunnel must exist on both selected servers before it can be updated')
             if any(not (item.get('metadata') or {}).get('native_profile') for item in existing.values()):
                 raise ValueError('only native tunnel pairs can be updated through this action')
+        previous={}
+        if action=='update':
+            previous={sid:{'id':ident,'transport':kind,'mode':existing[sid].get('mode','server'),**native_profile_config(sid,ident,servers)} for sid in (a_id,b_id)}
         interface,local,peer=allocate_pair_resources([snapshots[a_id],snapshots[b_id]])
         config_a=dict(config_a);config_b=dict(config_b)
         config_a['interface']=interface;config_b['interface']=interface
@@ -877,9 +880,18 @@ def create_native_pair(data):
         if kind in address_kinds:
             config_a['inner_local']=local;config_a['inner_peer']=peer
             config_b['inner_local']=peer;config_b['inner_peer']=local
-        endpoints=((a_id,config_a),(b_id,config_b));attempted=[];previous={}
-        if action=='update':
-            previous={sid:{'id':ident,'transport':kind,'mode':existing[sid].get('mode','server'),**native_profile_config(sid,ident,servers)} for sid in (a_id,b_id)}
+        if kind in ('ipsec-ikev2','ipsec-esp-udp'):
+            configured_psks={cfg.get('psk') for cfg in (config_a,config_b) if cfg.get('psk')}
+            if len(configured_psks)>1:raise ValueError('Both IPsec peers must use the same shared PSK.')
+            psk=next(iter(configured_psks),None)
+            if not psk and action=='update':
+                psk=next((previous[sid].get('psk') for sid in (a_id,b_id) if previous[sid].get('psk')),None)
+            if not psk:psk=secrets.token_urlsafe(48)
+            config_a['psk']=config_b['psk']=psk
+            for cfg in (config_a,config_b):
+                if not cfg.get('local_id'):cfg['local_id']=str(cfg.get('outer_local',''))
+                if not cfg.get('remote_id'):cfg['remote_id']=str(cfg.get('outer_peer',''))
+        endpoints=((a_id,config_a),(b_id,config_b));attempted=[]
         try:
             for sid,config in endpoints:
                 attempted.append(sid)
