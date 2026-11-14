@@ -1,3 +1,8 @@
+## avaTUN 0.2.23
+
+- Automatically allocate VXLAN/Geneve interfaces, conflict-free private /30 addresses, unique VNIs and UDP ports after inspecting both servers.
+- Include active network addresses, routes, interfaces, UDP listeners and saved network profiles in central collision checks.
+
 ## avaTUN 0.2.22
 
 - Back up and detach managed Backhaul tunnel configs during core upgrades, then restore, validate and restart enabled tunnels transactionally.

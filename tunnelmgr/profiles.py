@@ -130,7 +130,16 @@ def validate(group, cfg):
             local,peer=[ipaddress.IPv4Interface(cfg[k]) for k in ('inner_local','inner_peer')]
             private(local.network)
             if local.network.prefixlen!=30 or local.network!=peer.network or {local.ip,peer.ip}!=set(local.network.hosts()):raise ValueError('Use both host addresses of one private /30')
-        if kind in ('geneve','vxlan') and not 1<=int(cfg['vni'])<=16777215:raise ValueError('VNI must be 1..16777215')
+        if kind in ('geneve','vxlan'):
+            if not 1<=int(cfg['vni'])<=16777215:raise ValueError('VNI must be 1..16777215')
+            default_port=4789 if kind=='vxlan' else 6081
+            if not 1<=int(cfg.get('port',default_port))<=65535:raise ValueError('UDP destination port must be 1..65535')
+            if bool(cfg.get('inner_local')) != bool(cfg.get('inner_peer')):raise ValueError('Both inner VXLAN/Geneve addresses are required together')
+            if cfg.get('inner_local'):
+                local,peer=[ipaddress.IPv4Interface(cfg[key]) for key in ('inner_local','inner_peer')]
+                private(local.network)
+                if local.network.prefixlen!=30 or local.network!=peer.network or {local.ip,peer.ip}!=set(local.network.hosts()):
+                    raise ValueError('Use both host addresses of one private /30 for the VXLAN/Geneve overlay')
         if kind=='erspan' and (int(cfg['erspan_index'])<1 or not 0<=int(cfg['erspan_key'])<=4294967295):raise ValueError('ERSPAN index and key are invalid')
         if kind=='erspan' and cfg.get('mirror_interface'):iface(cfg['mirror_interface'])
         if kind in ('gre','gretap','gre-fou') and cfg.get('key') and not 0<=int(cfg['key'])<=4294967295:raise ValueError('GRE key must be a 32-bit value')

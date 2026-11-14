@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.22"
+APP_VERSION="0.2.23"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -626,7 +626,7 @@ def resource_monitor_loop():
 
 def server_remote(server,payload):
     import inspect
-    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
+    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
     code=code.replace("out={'items':out,'services':services}","out={'items':out,'services':services,'app_version':getattr(t,'APP_VERSION','نامشخص')}",1)
     guarded_code="import json\ntry:\n exec(compile("+repr(code)+", '<tunnelmgr-remote>', 'exec'))\nexcept Exception as exc:\n print(json.dumps({'error':str(exc)},ensure_ascii=False))"
     remote="runuser -u tunnelmgr -- env TUNNELMGR_HOME=/var/lib/tunnelmgr /usr/bin/python3 -c "+shlex.quote(guarded_code)
@@ -959,9 +959,19 @@ def create_native(data):
         privileged({"op":"profile","group":"network","id":profile,"action":"delete"})
         raise
 
-def allocation_snapshot(server_id,servers,include_l2tp=False):
-    if server_id!='local':return server_remote(servers[server_id],{'op':'allocation-snapshot','include_l2tp':include_l2tp})
+def allocation_snapshot(server_id,servers,include_l2tp=False,include_network_profiles=False):
+    if server_id!='local':return server_remote(servers[server_id],{'op':'allocation-snapshot','include_l2tp':include_l2tp,'include_network_profiles':include_network_profiles})
     items=rows();snapshot={'items':items,'network':network_snapshot()}
+    if include_network_profiles:
+        snapshot['network_profiles']=[]
+        listed=privileged({'op':'profile','group':'network','id':'inventory','action':'list'})
+        if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles on the local server.')
+        for profile_id in listed.get('items',[]):
+            result=privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})
+            if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles on the local server.')
+            config=result.get('config')
+            if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')
+            snapshot['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})
     if include_l2tp:
         snapshot['l2tp_profiles']=[]
         for item in items:
@@ -993,6 +1003,9 @@ def allocate_pair_interface(snapshots,prefix='tn'):
             metadata=item.get('metadata') or {}
             name=metadata.get('tun_name') or metadata.get('interface')
             if name:interfaces.add(str(name))
+        for profile in snapshot.get('network_profiles',[]):
+            name=profile.get('interface')
+            if name:interfaces.add(str(name))
     for _ in range(128):
         candidate=prefix+secrets.token_hex(6)
         if len(candidate)<=15 and candidate not in interfaces:return candidate
@@ -1011,6 +1024,14 @@ def allocate_pair_resources(snapshots,prefix='tn'):
             metadata=item.get('metadata') or {}
             for field in ('tun_local','tun_remote'):
                 value=metadata.get(field)
+                if not value:continue
+                try:
+                    iface=ipaddress.ip_interface(value)
+                    if iface.version==4:networks.add(iface.network)
+                except ValueError:continue
+        for profile in snapshot.get('network_profiles',[]):
+            for field in ('inner_local','inner_peer'):
+                value=profile.get(field)
                 if not value:continue
                 try:
                     iface=ipaddress.ip_interface(value)
@@ -1040,6 +1061,44 @@ def allocate_backhaul_health_port(snapshot):
     for port in range(19080,20080):
         if port not in used:return port
     raise RuntimeError('No free Backhaul health port is available on the server.')
+
+def allocate_vxlan_values(snapshots):
+    """Pick one VNI and UDP destination port unused on both VXLAN/Geneve peers."""
+    used_vni=set()
+    used_ports=[]
+    for snapshot in snapshots:
+        network=snapshot.get('network') or {}
+        if not network.get('udp_inventory_ok'):
+            raise RuntimeError('Could not inspect UDP ports on both servers; automatic VXLAN/Geneve port allocation was stopped.')
+        ports=set(int(port) for port in network.get('udp_ports',[]))
+        for profile in snapshot.get('network_profiles',[]):
+            if profile.get('kind') not in ('vxlan','geneve'):continue
+            try:used_vni.add(int(profile.get('vni')))
+            except (TypeError,ValueError):pass
+            try:ports.add(int(profile.get('port') or (4789 if profile.get('kind')=='vxlan' else 6081)))
+            except (TypeError,ValueError):pass
+        used_ports.append(ports)
+    vni=None
+    # Randomize the starting point while checking every candidate once at most.
+    start=secrets.randbelow(16777215)+1
+    for offset in range(16777215):
+        candidate=(start+offset-1)%16777215+1
+        if candidate not in used_vni:
+            vni=candidate;break
+    if vni is None:raise RuntimeError('No unused VXLAN/Geneve VNI is available on the selected servers.')
+    common=set.intersection(*(set(range(20000,65536))-ports for ports in used_ports))
+    if 4789 not in used_ports[0] and 4789 not in used_ports[1]:
+        port=4789
+    elif common:
+        # Prefer ports outside each host's ephemeral range when possible.
+        safe=common
+        for snapshot in snapshots:
+            low,high=(snapshot.get('network') or {}).get('udp_ephemeral_range',[32768,60999])
+            outside={value for value in safe if not int(low)<=value<=int(high)}
+            if outside:safe=outside
+        port=min(safe)
+    else:raise RuntimeError('No UDP destination port is free on both selected servers.')
+    return vni,port
 
 def allocate_l2tp_values(snapshots,encap='udp'):
     used_tunnel_ids=set();used_session_ids=set();used_ports=[]
@@ -1088,7 +1147,7 @@ def create_backhaul_pair(data):
     servers={s['id']:s for s in server_rows()}
     if any(sid!='local' and sid not in servers for sid in ids):raise ValueError('unknown managed server')
     with NATIVE_PAIR_LOCK:
-        snapshots=[allocation_snapshot(sid,servers) for sid in ids]
+        snapshots=[allocation_snapshot(sid,servers,include_network_profiles=True) for sid in ids]
         if any(item.get('id')==ident for snap in snapshots for item in snap.get('items',[])):raise ValueError('tunnel ID already exists')
         cfgs={sid:dict(configs[sid],id=ident,transport='backhaul') for sid in ids}
         a,b=[cfgs[sid] for sid in ids]
@@ -1138,11 +1197,13 @@ def create_native_pair(data):
     if config_a.get('id')!=ident or config_b.get('id')!=ident or config_a.get('transport')!=kind or config_b.get('transport')!=kind:
         raise ValueError('native tunnel endpoint configs do not match the requested tunnel')
     with NATIVE_PAIR_LOCK:
-        snapshots={sid:allocation_snapshot(sid,servers,include_l2tp=kind=='l2tpv3') for sid in (a_id,b_id)}
+        snapshots={sid:allocation_snapshot(sid,servers,include_l2tp=kind=='l2tpv3',include_network_profiles=kind in ('geneve','vxlan')) for sid in (a_id,b_id)}
         existing={sid:next((item for item in snapshot.get('items',[]) if item.get('id')==ident),None) for sid,snapshot in snapshots.items()}
         if action=='create':
             for sid,item in existing.items():
                 if item:raise ValueError('tunnel ID already exists on '+sid)
+            if any(profile.get('profile_id')=='native-'+ident for snapshot in snapshots.values() for profile in snapshot.get('network_profiles',[])):
+                raise ValueError('A saved network profile already uses this tunnel ID; remove or reconcile it before creating another.')
         else:
             if not all(existing.values()):raise ValueError('tunnel must exist on both selected servers before it can be updated')
             if any(not (item.get('metadata') or {}).get('native_profile') for item in existing.values()):
@@ -1151,13 +1212,17 @@ def create_native_pair(data):
         if action=='update':
             previous={sid:{'id':ident,'transport':kind,'mode':existing[sid].get('mode','server'),**native_profile_config(sid,ident,servers)} for sid in (a_id,b_id)}
         config_a=dict(config_a);config_b=dict(config_b)
-        address_kinds={'gre','gretap','ipip','gre-fou','ipip-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp'}
+        address_kinds={'gre','gretap','ipip','gre-fou','ipip-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','geneve','vxlan'}
         if action=='create':
             interface,local,peer=allocate_pair_resources([snapshots[a_id],snapshots[b_id]])
             config_a['interface']=interface;config_b['interface']=interface
             if kind in address_kinds:
                 config_a['inner_local']=local;config_a['inner_peer']=peer
                 config_b['inner_local']=peer;config_b['inner_peer']=local
+            if kind in ('geneve','vxlan'):
+                vni,port=allocate_vxlan_values([snapshots[a_id],snapshots[b_id]])
+                config_a['vni']=config_b['vni']=vni
+                config_a['port']=config_b['port']=port
         else:
             # Recreate the devices, keeping their saved identity/addresses unless
             # the edit explicitly changes them. Routing and HAProxy reference them.
@@ -1165,6 +1230,8 @@ def create_native_pair(data):
                 cfg['interface']=cfg.get('interface') or previous[sid]['interface']
                 if kind in address_kinds:
                     for field in ('inner_local','inner_peer'):cfg[field]=cfg.get(field) or previous[sid].get(field)
+                if kind in ('geneve','vxlan'):
+                    for field in ('vni','port'):cfg[field]=cfg.get(field) or previous[sid].get(field)
             interface=config_a['interface']
         if kind in ('ipsec-ikev2','ipsec-esp-udp'):
             configured_psks={cfg.get('psk') for cfg in (config_a,config_b) if cfg.get('psk')}
@@ -1216,7 +1283,8 @@ def create_native_pair(data):
         if action=='update':
             result=rebuild_tunnel_pair(ident,[a_id,b_id],dict(endpoints),'update')
             result.update(transport=kind,action='update',interface=interface,
-                          inner_local=config_a.get('inner_local'),inner_peer=config_a.get('inner_peer'))
+                          inner_local=config_a.get('inner_local'),inner_peer=config_a.get('inner_peer'),
+                          vni=config_a.get('vni'),port=config_a.get('port'))
             if kind=='l2tpv3' and config_a.get('encap')=='udp':result['udp_ports']=[config_a['udp_sport'],config_a['udp_dport']]
             return result
         attempted=[]
@@ -1247,7 +1315,7 @@ def create_native_pair(data):
             raise
     result={'ok':True,'id':ident,'transport':kind,'servers':[a_id,b_id],'action':action,
             'interface':interface,'inner_local':config_a.get('inner_local'),
-            'inner_peer':config_a.get('inner_peer')}
+            'inner_peer':config_a.get('inner_peer'),'vni':config_a.get('vni'),'port':config_a.get('port')}
     if kind=='l2tpv3' and config_a.get('encap')=='udp':result['udp_ports']=[config_a['udp_sport'],config_a['udp_dport']]
     return result
 
