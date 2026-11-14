@@ -6,56 +6,27 @@ command -v python3 >/dev/null
 python3 -c 'import sys; assert sys.version_info >= (3,11)'
 
 install -d -o root -g root -m 0755 /usr/local/bin /etc/backhaul /var/lib/backhaul-manager
-# Backhaul TUN is shipped as a manifest-verified amd64 core. Every installer
-# run removes older installed Backhaul executables, then installs this trusted
-# local build. Tunnel configs and manager state are retained.
+# Backhaul TUN is shipped as a manifest-verified amd64 core. The manager owns
+# the transactional upgrade: it backs up and detaches managed tunnel files,
+# swaps the core, restores configs, validates them, and brings enabled tunnels
+# back online. Do not stop services or remove the old core here.
 if [ "$(uname -m)" = x86_64 ]; then
-    active_backhaul_units=$(mktemp /run/avatun-backhaul-active.XXXXXX)
-    trap 'rm -f "$active_backhaul_units"' EXIT HUP INT TERM
-    for unit_file in /etc/systemd/system/backhaul-*.service /run/systemd/system/backhaul-*.service /usr/lib/systemd/system/backhaul-*.service /lib/systemd/system/backhaul-*.service; do
-        [ -f "$unit_file" ] || continue
-        unit=$(basename "$unit_file")
-        exec_start=$(systemctl show "$unit" -p ExecStart --value 2>/dev/null || true)
-        if systemctl is-active --quiet "$unit"; then
-            case "$exec_start" in
-                *"/usr/local/bin/backhaul"*) printf '%s\n' "$unit" >> "$active_backhaul_units" ;;
-            esac
-            systemctl stop "$unit" || true
-        fi
-        case "$exec_start" in
-            *"/usr/local/bin/backhaul"*) ;;
-            *) systemctl disable "$unit" >/dev/null 2>&1 || true ;;
-        esac
-    done
-    pkill -x backhaul 2>/dev/null || true
-    pkill -x backhaul_premium 2>/dev/null || true
-    pkill -f '^/root/backhaul-core/backhaul_premium([[:space:]]|$)' 2>/dev/null || true
-    python3 - <<'PY'
-from pathlib import Path
-for folder in ('/usr/local/bin','/usr/bin','/usr/local/sbin','/usr/sbin','/root/backhaul-core'):
-    directory=Path(folder)
-    if not directory.is_dir():continue
-    for path in directory.glob('backhaul*'):
-        try:
-            if path.is_file() and not path.is_symlink() and path.open('rb').read(4)==b'\x7fELF':
-                path.unlink()
-        except OSError:
-            raise
-PY
-    for old_core in /usr/local/bin/backhaul /usr/bin/backhaul /usr/local/sbin/backhaul /usr/sbin/backhaul /root/backhaul-core/backhaul_premium; do
-        [ ! -f "$old_core" ] || rm -f -- "$old_core"
-    done
-    rm -f /usr/local/bin/backhaul-manager /usr/local/bin/backhaul-manager.py /usr/local/bin/backhaul.sh
+    install_args=""
+    if [ -f /usr/local/bin/backhaul ]; then
+        previous_sha256=$(sha256sum /usr/local/bin/backhaul | awk '{print $1}')
+        install_args="--replace-existing --previous-sha256 $previous_sha256"
+    fi
+    # Word splitting is intentional: install_args contains only these fixed
+    # options and a hexadecimal digest computed from the existing executable.
+    # shellcheck disable=SC2086
     python3 "$ROOT/vendor/backhaul/scripts/backhaul-manager.py" install \
         --binary "$ROOT/vendor/backhaul/bin/backhaul" \
         --manifest "$ROOT/vendor/backhaul/SHA256SUMS" \
-        --manifest-entry bin/backhaul
-    if [ -s "$active_backhaul_units" ]; then
-        while IFS= read -r unit; do
-            [ -n "$unit" ] && systemctl restart "$unit"
-        done < "$active_backhaul_units"
-    fi
-    echo 'Removed previous Backhaul cores and installed the bundled manifest-verified build.'
+        --manifest-entry bin/backhaul $install_args
+    for old_core in /usr/bin/backhaul /usr/local/sbin/backhaul /usr/sbin/backhaul /root/backhaul-core/backhaul_premium; do
+        [ ! -f "$old_core" ] || rm -f -- "$old_core"
+    done
+    echo 'Installed the manifest-verified Backhaul core; managed tunnels were restored.'
 else
     echo "Backhaul TUN core is bundled for amd64; skipped on $(uname -m)."
 fi

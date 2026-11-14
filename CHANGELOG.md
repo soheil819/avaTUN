@@ -1,3 +1,12 @@
+## avaTUN 0.2.22
+
+- Back up and detach managed Backhaul tunnel configs during core upgrades, then restore, validate and restart enabled tunnels transactionally.
+- Keep the existing core and manager in place until the replacement is verified; roll back the core and tunnel state if installation fails.
+
+## avaTUN 0.2.21
+
+- Apply neon colors and lighting while keeping the existing layout.
+
 ## avaTUN 0.2.20
 
 - Add Mesh map zoom controls and subtle depth shading to tunnel paths.

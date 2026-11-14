@@ -277,14 +277,15 @@ class Manager:
         self.core_command(selected, ["-c", str(path), "-check"])
 
     def service(self, action: str, name: str | None = None) -> bool:
-        if action not in ("daemon-reload", "is-active", "start", "stop", "restart", "enable", "disable"):
+        if action not in ("daemon-reload", "is-active", "is-enabled", "start", "stop", "restart", "enable", "disable"):
             raise ManagerError("Unsupported service operation.")
         unit = f"backhaul-{tunnel_id(name)}.service" if name else None
         if self.root:
             target = self.path("/var/lib/backhaul-manager/simulation.json")
             data = json.loads(target.read_text()) if target.exists() else {"operations": [], "active": [], "enabled": []}
-            if action == "is-active":
-                return unit in data["active"]
+            if action in ("is-active", "is-enabled"):
+                category = "active" if action == "is-active" else "enabled"
+                return unit in data[category]
             data["operations"].append({"action": action, "unit": unit})
             for category, additions, removals in (("active", ("start", "restart"), ("stop",)), ("enabled", ("enable",), ("disable",))):
                 if action in additions and unit not in data[category]:
@@ -294,7 +295,7 @@ class Manager:
             atomic_bytes(target, json_bytes(data), 0o600)
             return True
         result = self.command(["systemctl", action] + ([unit] if unit else []), timeout=40,
-                              acceptable=(0, 3, 4) if action == "is-active" else (0,))
+                              acceptable=(0, 1, 3, 4) if action in ("is-active", "is-enabled") else (0,))
         return result.returncode == 0
 
     def start_service(self, name: str) -> None:
@@ -458,29 +459,44 @@ class Manager:
                     snapshots[logical] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
                 else:
                     snapshots[logical] = None
-            active = []
+            active, enabled = [], []
+            tunnel_files = {}
             for name in state["tunnels"]:
                 self.owned(name, state)
                 if self.service("is-active", name):
                     active.append(name)
+                if self.service("is-enabled", name):
+                    enabled.append(name)
+                for path in (self.config_path(name), self.service_path(name)):
+                    safe_file(path)
+                    tunnel_files[path] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
             candidate = self.path("/usr/local/bin/.backhaul-candidate")
             backup = self.path("/usr/local/bin/.backhaul-rollback")
             if candidate.exists() or backup.exists():
                 raise ManagerError("An unfinished installation exists; inspect candidate/rollback files locally.")
             existed = target.exists()
             old_mode = stat.S_IMODE(target.stat().st_mode) if existed else 0o755
-            stopped, replaced, managers_changed = [], False, []
+            stopped, started, replaced, managers_changed = [], [], False, []
+            tunnel_backup = Path(tempfile.mkdtemp(prefix="install-tunnels-", dir=self.state_path.parent))
+            os.chmod(tunnel_backup, 0o700)
             completed = restored = False
             try:
                 atomic_bytes(candidate, source.read_bytes(), 0o755)
                 if digest(candidate) != expected:
                     raise ManagerError("Core changed during copying; cancelled before installation.")
                 version = self.verify_core(candidate)
-                for name in state["tunnels"]:
-                    self.validate_config(self.config_path(name), core=candidate)
                 for name in active:
                     self.service("stop", name)
                     stopped.append(name)
+                # Keep a durable, root-only copy while detaching tunnel files.
+                # Some core upgrades cannot validate configs with the candidate
+                # until after the old runtime has been removed.
+                for index, (path, (content, mode)) in enumerate(tunnel_files.items()):
+                    atomic_bytes(tunnel_backup / f"{index}.bak", content, mode)
+                    path.unlink()
+                state["tunnels"] = {}
+                self.save_state(state)
+                self.service("daemon-reload")
                 if existed:
                     atomic_bytes(backup, target.read_bytes(), old_mode)
                 os.replace(candidate, target)
@@ -489,15 +505,23 @@ class Manager:
                     atomic_bytes(self.path(logical), content, 0o755)
                     managers_changed.append(logical)
                     state["manager_files"][logical] = hashlib.sha256(content).hexdigest()
-                for name in active:
+                state["tunnels"] = copy.deepcopy(old_state["tunnels"])
+                for path, (content, mode) in tunnel_files.items():
+                    atomic_bytes(path, content, mode)
+                self.save_state(state)
+                self.service("daemon-reload")
+                for name in state["tunnels"]:
+                    self.validate_config(self.config_path(name), core=target)
+                for name in sorted(set(active) | set(enabled)):
                     self.start_service(name)
+                    started.append(name)
                 state["core_sha256"], state["core_version"] = expected, version
                 self.save_state(state)
                 completed = True
                 return version
             except Exception:
                 if replaced:
-                    for name in active:
+                    for name in started:
                         with contextlib.suppress(Exception):
                             self.service("stop", name)
                     if existed and backup.exists():
@@ -506,6 +530,9 @@ class Manager:
                     elif not existed:
                         with contextlib.suppress(FileNotFoundError):
                             target.unlink()
+                for path, (content, mode) in tunnel_files.items():
+                    with contextlib.suppress(Exception):
+                        atomic_bytes(path, content, mode)
                 for logical in managers_changed:
                     prior = snapshots[logical]
                     if prior is None:
@@ -514,6 +541,8 @@ class Manager:
                     else:
                         atomic_bytes(self.path(logical), prior[0], prior[1])
                 self.save_state(old_state)
+                with contextlib.suppress(Exception):
+                    self.service("daemon-reload")
                 for name in stopped:
                     with contextlib.suppress(Exception):
                         self.start_service(name)
@@ -526,6 +555,9 @@ class Manager:
                 for path in cleanup:
                     with contextlib.suppress(FileNotFoundError):
                         path.unlink()
+                if completed or restored:
+                    import shutil
+                    shutil.rmtree(tunnel_backup, ignore_errors=True)
 
     def change_source(self, name: str, local_ips: list[str] | None = None, spoof_source: str | None = None,
                       expected_peer_source: str | None = None, clear_bind: bool = False, clear_spoof: bool = False) -> None:
