@@ -1,3 +1,7 @@
+## avaTUN 0.2.20
+
+- Add Mesh map zoom controls and subtle depth shading to tunnel paths.
+
 ## avaTUN 0.2.19
 
 - Allow vertical as well as horizontal globe rotation; automatically place server labels to prevent overlaps.
