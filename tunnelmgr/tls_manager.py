@@ -6,6 +6,7 @@ from pathlib import Path
 REQUEST=Path('/etc/tunnelmgr/panel-tls-request.json')
 STATUS=Path('/var/lib/tunnelmgr/panel-tls-status.json')
 CERT_DIR=Path('/etc/tunnelmgr/panel-tls')
+WEBHOOK_CONFIG=Path('/etc/avatun/telegram-webhook.json')
 LIVE=Path('/etc/letsencrypt/live')
 
 def write_json(path,value,mode=0o600):
@@ -76,18 +77,26 @@ def apply():
     expiry=run(['/usr/bin/openssl','x509','-enddate','-noout','-in',str(CERT_DIR/'fullchain.pem')]).partition('=')[2]
     result={'state':'ready','step':'complete','message':'گواهی نصب شد؛ HTTP و HTTPS روی یک پورت فعال هستند.','domain':domain,'email':email,'port':port,'certificate_name':cert_name,'certificate_expires':expiry,'updated_at':int(time.time())}
     write_json(STATUS,result)
+    write_json(WEBHOOK_CONFIG,{'state':'ready','domain':domain,'cert':str(CERT_DIR/'fullchain.pem'),'key':str(CERT_DIR/'privkey.pem'),'updated_at':int(time.time())},0o640)
+    os.chown(WEBHOOK_CONFIG,0,group)
     if old_port!=port:
         time.sleep(5)
         subprocess.Popen(['/usr/bin/systemctl','restart','tunnelmgr.service'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+    subprocess.run(['/usr/bin/systemctl','try-restart','avatun-telegram.service'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
     return result
 
 def renew_hook():
     state=json.loads(STATUS.read_text());deploy_copy(state['certificate_name'])
+    subprocess.run(['/usr/bin/systemctl','try-restart','tunnelmgr.service'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+    subprocess.run(['/usr/bin/systemctl','try-restart','avatun-telegram.service'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+
+def deploy_hook():
+    renew_hook()
 
 def main():
     try:
         if sys.argv[1:] == ['deploy-hook']:
-            state=json.loads(STATUS.read_text());deploy_copy(state['certificate_name']);return
+            deploy_hook();return
         apply()
     except Exception as exc:
         try:

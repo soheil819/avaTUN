@@ -1,9 +1,11 @@
 # avaTUN Telegram management
 
-The optional bot uses the panel's password-authenticated API and long polling.
-It runs on the central panel server and controls all registered tunnel endpoints
-through the same API used by the dashboard. Python 3.11 and the standard library
-are sufficient. No inbound Telegram port or webhook is needed.
+The optional bot uses the panel's password-authenticated API and receives
+updates through Telegram's HTTPS webhook when a panel domain and valid TLS
+certificate are configured. It uses port 8443 for webhook delivery. Before TLS
+is ready, it keeps using long polling. The bot runs on the central panel server
+and controls all registered tunnel endpoints through the dashboard API.
+Python 3.11 and the standard library are sufficient.
 
 ## Interface and behavior
 
@@ -76,6 +78,12 @@ Create `/etc/avatun/telegram.json` on the central panel server:
 Administrators can change the BotFather token and Telegram administrator ID
 list from **Settings → Telegram bot** in the web panel. The token is never sent
 back to the browser; saving enables and restarts the bot service automatically.
+Enter the panel's domain in **Settings → TLS certificate** and issue its
+certificate. The same domain and certificate are then used automatically for
+the webhook; no separate bot domain setting is required. TCP port 8443 must be
+reachable from the public internet. When the domain or certificate changes, the
+panel refreshes the bot webhook automatically. Certificate renewal also reloads
+the bot's TLS listener.
 
 User IDs must be positive numbers. Only private chats where the sender and chat
 ID match an allowed user are accepted. Add a viewer to `viewers` to permit status
@@ -92,9 +100,9 @@ systemctl enable --now avatun-telegram
 ```
 
 Send `/start` to the bot from your allowed Telegram account. Until that first
-message, Telegram cannot deliver private notifications. An existing webhook must
-be removed before polling is activated. The bot reports this configuration error
-and does not delete an existing webhook automatically.
+message, Telegram cannot deliver private notifications. When webhook mode is
+active, Telegram delivers updates to the HTTPS endpoint and the bot no longer
+uses `getUpdates` polling.
 
 Commands: `/start`, `/status`, `/servers`, `/tunnels`, `/hardware`, `/report`,
 `/help`, `/cancel`. Administrators also have `/forwards`, `/update`, `/audit`,

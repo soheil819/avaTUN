@@ -14,6 +14,7 @@ import re
 import secrets
 import sqlite3
 import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -21,6 +22,7 @@ import urllib.parse
 import urllib.request
 import zlib
 from zoneinfo import ZoneInfo
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram_console import ConsoleMixin
 from telegram_ui import digits, render, context
 from telegram_resources import ResourceMixin
@@ -1583,6 +1585,72 @@ class Bot(ResourceMixin, ConsoleMixin):
                 self.state.queue(admins, 'daily:' + day, text)
             self.state.put('daily_report_date', day)
 
+    def start_webhook(self):
+        secret_path = pathlib.Path(self.config.get('webhook_secret_path',
+                                                    '/var/lib/tunnelmgr/telegram-webhook-secret'))
+        secret_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            secret = secret_path.read_text().strip()
+        except FileNotFoundError:
+            secret = secrets.token_hex(32)
+            fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'w') as output:
+                output.write(secret + '\n')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,256}', secret):
+            raise ValueError('Invalid webhook secret')
+        route = urllib.parse.urlsplit(self.config['webhook_url']).path
+        if not route or route == '/':
+            raise ValueError('webhook_url must include a non-root path')
+
+        bot = self
+        update_lock = threading.Lock()
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                if self.path != route:
+                    self.send_error(404)
+                    return
+                supplied = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
+                if not secrets.compare_digest(supplied, secret):
+                    self.send_error(403)
+                    return
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 1 <= length <= 1048576:
+                        raise ValueError('invalid request size')
+                    update = json.loads(self.rfile.read(length))
+                    if not isinstance(update, dict) or not isinstance(update.get('update_id'), int):
+                        raise ValueError('invalid Telegram update')
+                    with update_lock:
+                        bot.handle_update(update)
+                    body = b'{"ok":true}'
+                    self.send_response(200)
+                except (OSError, ValueError, KeyError, RuntimeError, TypeError) as error:
+                    logging.warning('Webhook update failed (%s)', type(error).__name__)
+                    body = b'{"ok":false}'
+                    self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                return
+
+        server = ThreadingHTTPServer(('0.0.0.0', self.config['webhook_port']), Handler)
+        server.daemon_threads = True
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(self.config['webhook_cert'], self.config['webhook_key'])
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        thread = threading.Thread(target=server.serve_forever, name='telegram-webhook', daemon=True)
+        thread.start()
+        self.webhook_server = server
+        self.telegram.request('setWebhook', {
+            'url': self.config['webhook_url'], 'secret_token': secret,
+            'allowed_updates': ['message', 'callback_query', 'widget_query'],
+            'max_connections': 1, 'drop_pending_updates': False})
+        return thread
+
     def run(self):
         self.set_status('starting')
         # A process restart cannot prove whether an in-flight mutation completed.
@@ -1593,7 +1661,8 @@ class Bot(ResourceMixin, ConsoleMixin):
                 job.update(state='interrupted',message='ربات هنگام عملیات دوباره راه‌اندازی شد. وضعیت مقصد را بررسی کن؛ درخواست خودکار تکرار نشد.')
                 self.state.put(key,job)
         self.telegram.request('getMe', {})
-        if self.telegram.request('getWebhookInfo', {}).get('url'):
+        webhook_mode = self.config.get('update_mode') == 'webhook'
+        if not webhook_mode and self.telegram.request('getWebhookInfo', {}).get('url'):
             raise RuntimeError('Polling requires removing the existing webhook first')
         self.telegram.request('setMyCommands', {'commands': [
             {'command': 'start', 'description': 'منوی مدیریت avaTUN'},
@@ -1612,17 +1681,23 @@ class Bot(ResourceMixin, ConsoleMixin):
                     ('forwards','فوروارد'),('report','گزارش 24 ساعت'),('update','به‌روزرسانی پنل'),
                     ('audit','عملیات اخیر'),('settings','تنظیمات و راهنما'),('cancel','لغو فرم جاری'))]})
         self.set_status('ready')
+        if webhook_mode:
+            self.start_webhook()
         self.run_resource_refresh()
         next_monitor = 0
         while True:
             try:
                 # Long-poll first so a scheduled monitor or notification can never
                 # hold up an already waiting user command.
-                updates = self.telegram.request('getUpdates', {'offset': self.state.get('offset', 0),
-                    'timeout': 5, 'limit': 20, 'allowed_updates': ['message', 'callback_query', 'widget_query']})
-                self.set_status('ready')
-                for update in updates:
-                    self.handle_update(update)
+                if webhook_mode:
+                    self.set_status('ready')
+                    time.sleep(5)
+                else:
+                    updates = self.telegram.request('getUpdates', {'offset': self.state.get('offset', 0),
+                        'timeout': 5, 'limit': 20, 'allowed_updates': ['message', 'callback_query', 'widget_query']})
+                    self.set_status('ready')
+                    for update in updates:
+                        self.handle_update(update)
                 now = time.time()
                 if now >= next_monitor:
                     self.monitor(now)
@@ -1649,6 +1724,17 @@ def load_config(path):
         raise ValueError('Invalid panel_url')
     if url.scheme == 'http' and url.hostname not in ('localhost', '127.0.0.1', '::1'):
         raise ValueError('Remote panel connections require HTTPS')
+    if config.get('update_mode', 'polling') == 'webhook':
+        webhook = urllib.parse.urlsplit(config.get('webhook_url', ''))
+        if webhook.scheme != 'https' or not webhook.hostname or webhook.username or webhook.password or webhook.query or webhook.fragment:
+            raise ValueError('Invalid webhook_url')
+        if webhook.port not in (None, 443, 8443):
+            raise ValueError('Telegram webhooks require port 443 or 8443')
+        config.setdefault('webhook_port', webhook.port or 443)
+        config.setdefault('webhook_cert', '/etc/tunnelmgr/panel-tls/fullchain.pem')
+        config.setdefault('webhook_key', '/etc/tunnelmgr/panel-tls/privkey.pem')
+        if type(config['webhook_port']) is not int or config['webhook_port'] not in (443, 8443):
+            raise ValueError('webhook_port must be 443 or 8443')
     hour = config.get('daily_report_hour', 9)
     if type(hour) is not int or not 0 <= hour <= 23:
         raise ValueError('daily_report_hour must be 0..23')
@@ -1657,6 +1743,20 @@ def load_config(path):
     except (KeyError, ValueError) as error:
         raise ValueError('Invalid report timezone') from error
     config.setdefault('state_path', '/var/lib/tunnelmgr/telegram.sqlite3')
+    webhook_config = pathlib.Path(config.get('webhook_config', '/etc/avatun/telegram-webhook.json'))
+    try:
+        webhook = json.loads(webhook_config.read_text())
+    except (OSError, ValueError):
+        webhook = None
+    if isinstance(webhook, dict) and webhook.get('state') == 'ready':
+        domain = webhook.get('domain', '')
+        if not isinstance(domain, str) or not re.fullmatch(r'[a-zA-Z0-9.-]{1,253}', domain):
+            raise ValueError('Invalid Telegram webhook domain')
+        config.update(update_mode='webhook', webhook_url='https://' + domain + ':8443/telegram/webhook',
+                      webhook_port=8443, webhook_cert=webhook.get('cert', '/etc/tunnelmgr/panel-tls/fullchain.pem'),
+                      webhook_key=webhook.get('key', '/etc/tunnelmgr/panel-tls/privkey.pem'))
+    else:
+        config.setdefault('update_mode', 'polling')
     return config
 
 

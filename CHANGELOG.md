@@ -1,3 +1,7 @@
+## avaTUN 0.2.30 · دریافت پیام با webhook
+
+- Use the domain entered in panel TLS settings to configure a secured Telegram webhook on port 8443. The bot switches automatically after the certificate is issued or renewed; before TLS is ready, polling remains active.
+
 ## avaTUN 0.2.29 · تلاش دوبارهٔ ویجت
 
 - Remove the Telegram widget delivery cooldown so each `/start` retries widget delivery immediately.
