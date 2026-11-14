@@ -37,7 +37,8 @@ class FakePanel:
         self.operations.append(args)
         return ['local ✅', 'peer ✅']
 
-    def request(self, path, data=None):
+    def request(self, path, data=None, timeout=None):
+        if path=='/api/v1/servers/resources':return {'items':copy.deepcopy(self.data.get('resources',[]))}
         return {'items': []}
 
 
@@ -451,6 +452,145 @@ class ConsoleChecks(unittest.TestCase):
         with patch.object(self.bot,'operation_worker',return_value=worker):
             self.bot._console_worker(1,'test',{'kind':'tunnel','target':'gre-test','action':'restart','expected':['local','peer']})
         self.assertEqual('partial',self.state.get('console-job:1')['state'])
+
+
+class ResourceChecks(unittest.TestCase):
+    tearDown = BotChecks.tearDown
+    update = BotChecks.update
+
+    def setUp(self):
+        BotChecks.setUp(self)
+        self.items=[{'id':sid,'name':sid,'host':'192.0.2.1','reachable':True,'resources':{
+            'cpu_percent':25,'memory_percent':40,'disk_percent':60,'swap_percent':0,
+            'memory_used_bytes':400,'memory_total_bytes':1000,'disk_used_bytes':600,'disk_total_bytes':1000,
+            'swap_total_bytes':0,'download_bytes_per_sec':1024,'upload_bytes_per_sec':512,'checked_at':time.time()}}
+            for sid in ('local','peer')]
+        self.panel.data['resources']=self.items
+
+    def native(self):
+        self.state.put(self.bot.widget_delivery_key(1),{'retry_at':time.time()+3600})
+        self.bot.show_screen(1,'resources')
+
+    def test_only_resource_page_uses_the_resource_widget(self):
+        self.bot.home(1);self.bot.servers(1);self.bot.tunnels(1)
+        self.assertFalse(any(r[0]=='sendWidget' for r in self.telegram.requests))
+        self.bot.hardware(1)
+        request=next(r for r in self.telegram.requests if r[0]=='sendWidget')
+        self.assertEqual(tg.RESOURCE_WIDGET_HTML,request[1]['html'])
+        self.assertNotEqual(tg.CONTROL_WIDGET_HTML,request[1]['html'])
+
+    def test_resource_widget_respects_selected_server_scope(self):
+        self.bot.show_screen(1,'resources',server_id='peer')
+        data=json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertEqual('peer',data['x']['id'])
+        self.assertEqual(1,data['n'])
+
+    def test_denied_widget_keeps_a_live_native_card(self):
+        request=self.telegram.request
+        def deny(method,data):
+            if method=='sendWidget':raise RuntimeError('INPUT_MEDIA_WIDGET_NOT_ALLOWED')
+            return request(method,data)
+        with patch.object(self.telegram,'request',side_effect=deny):self.bot.hardware(1)
+        self.assertEqual('native',self.state.get('resource-active:1')['kind'])
+        self.assertIn('پایش زنده',self.telegram.messages[-1][1])
+        self.assertIn('25.0%',self.telegram.messages[-1][1])
+        self.assertNotIn('INPUT_MEDIA_WIDGET_NOT_ALLOWED',self.telegram.messages[-1][1])
+
+    def test_native_refresh_updates_same_message_without_extending_lease(self):
+        self.native();active=self.state.get('resource-active:1');mid=active['message_id']
+        self.items[0]['resources']['cpu_percent']=70
+        with patch('telegram_resources.time.time',return_value=active['next_at']+1):self.bot.refresh_resource_cards()
+        self.assertEqual('editMessageText',self.telegram.requests[-1][0])
+        self.assertEqual(mid,self.telegram.requests[-1][1]['message_id'])
+        self.assertIn('70.0%',self.telegram.messages[-1][1])
+        self.assertEqual(active['until'],self.state.get('resource-active:1')['until'])
+
+    def test_exit_stops_native_polling(self):
+        self.native();self.bot.home(1)
+        with patch.object(self.bot,'resource_items') as fetch:self.bot.refresh_resource_cards()
+        fetch.assert_not_called()
+        self.assertIsNone(self.state.get('resource-active:1'))
+
+    def test_pause_resume_and_expiry(self):
+        self.native();ctx={'page':'resources','server_id':'all'}
+        self.bot.navigate(1,'resource-pause',ctx)
+        self.assertTrue(self.state.get('resource-active:1')['paused'])
+        with patch.object(self.bot,'resource_items') as fetch:self.bot.refresh_resource_cards()
+        fetch.assert_not_called()
+        self.bot.navigate(1,'resource-resume',ctx)
+        active=self.state.get('resource-active:1')
+        self.assertFalse(active['paused'])
+        with patch('telegram_resources.time.time',return_value=active['until']+1):self.bot.refresh_resource_cards()
+        self.assertTrue(self.state.get('resource-active:1')['paused'])
+        self.assertIn('متوقف',self.telegram.messages[-1][1])
+
+    def test_pagination_changes_server_and_refresh_keeps_it(self):
+        self.native();ctx={'page':'resources','page_index':0,'server_id':'all','selected':'local'}
+        self.bot.navigate(1,'page:resources:1',ctx)
+        self.assertEqual('peer',self.state.get('resource-active:1')['selected'])
+        self.bot.navigate(1,'refresh',ctx)
+        self.assertEqual('peer',self.state.get('resource-active:1')['selected'])
+
+    def test_server_reordering_does_not_switch_selected_server(self):
+        self.native();active=self.state.get('resource-active:1')
+        self.items.reverse()
+        with patch('telegram_resources.time.time',return_value=active['next_at']+1):self.bot.refresh_resource_cards()
+        self.assertEqual('local',self.state.get('resource-active:1')['selected'])
+
+    def test_failed_fetch_is_shown_as_unavailable(self):
+        self.native();active=self.state.get('resource-active:1')
+        with patch.object(self.bot,'resource_items',side_effect=RuntimeError('offline')),patch('telegram_resources.time.time',return_value=active['next_at']+1):
+            self.bot.refresh_resource_cards()
+        self.assertIn('در دسترس نیست',self.telegram.messages[-1][1])
+
+    def test_navigation_during_fetch_is_not_overwritten(self):
+        self.native();active=self.state.get('resource-active:1')
+        def fetch(scope):
+            self.bot.home(1)
+            return self.items
+        with patch.object(self.bot,'resource_items',side_effect=fetch),patch('telegram_resources.time.time',return_value=active['next_at']+1):
+            self.bot.refresh_resource_cards()
+        self.assertEqual('overview',self.state.get('console:1')['screen']['page'])
+
+    def test_leaving_widget_restores_native_console(self):
+        self.bot.home(1);old=self.state.get('console:1')['message_id']
+        self.bot.hardware(1);widget=self.state.get('console:1')['message_id']
+        self.bot.home(1)
+        self.assertNotEqual(old,widget)
+        self.assertEqual(old,self.state.get('console:1')['message_id'])
+        self.assertTrue(any(r[0]=='editMessageReplyMarkup' for r in self.telegram.requests))
+
+    def test_closed_widget_and_unauthorized_user_do_not_fetch_metrics(self):
+        query={'id':'query','from':{'id':999},'chat':{'id':999,'type':'private'},'message_id':100,'data':'resources:0'}
+        with patch.object(self.bot,'resource_items') as fetch:
+            self.bot.answer_resource_query(query)
+            query.update({'from':{'id':1},'chat':{'id':1,'type':'private'}})
+            self.bot.answer_resource_query(query)
+        fetch.assert_not_called()
+
+    def test_widget_query_persists_state_and_does_not_escape_scope(self):
+        self.bot.show_screen(1,'resources',server_id='peer');mid=self.state.get('console:1')['message_id']
+        self.bot.answer_resource_query({'id':'q','from':{'id':1},'chat':{'id':1,'type':'private'},'message_id':mid,'data':'resources:9'})
+        response=json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertEqual('peer',response['x']['id'])
+        self.assertEqual('editMessageWidgetData',self.telegram.requests[-1][0])
+
+    def test_large_persian_names_stay_under_widget_limit(self):
+        items=copy.deepcopy(self.items)
+        items[0].update(name='سرور'*100,host='میزبان'*100)
+        state=self.bot.resource_payload(items,0)
+        self.assertLessEqual(len(json.dumps(state,ensure_ascii=False,separators=(',',':')).encode()),1024)
+        self.assertLess(len(self.bot.resource_text(state).encode('utf-16-le'))//2,4096)
+
+    def test_unchanged_widget_can_still_renew_its_live_session(self):
+        self.bot.hardware(1);active=self.state.get('resource-active:1')
+        request=self.telegram.request
+        def unchanged(method,data):
+            if method=='editMessageWidgetData':raise RuntimeError('message is not modified')
+            return request(method,data)
+        with patch.object(self.telegram,'request',side_effect=unchanged),patch('telegram_resources.time.time',return_value=active['until']-1):
+            self.bot.hardware(1)
+        self.assertGreater(self.state.get('resource-active:1')['until'],active['until'])
 
 
 class ForwardChecks(unittest.TestCase):

@@ -14,6 +14,7 @@ _screen_locks = defaultdict(threading.RLock)
 class ConsoleMixin:
     def present(self, user_id, text, keyboard=None, html=False, screen=None):
         with _screen_locks[user_id]:
+            if (screen or {}).get('page')!='resources':self.leave_resource_screen(user_id)
             return self._present(user_id,text,keyboard,html,screen)
 
     def _present(self, user_id, text, keyboard=None, html=False, screen=None):
@@ -61,7 +62,7 @@ class ConsoleMixin:
                      'تازه‌سازی، اطلاعات جدید را از پنل می‌گیرد.',
                      'پیام‌های هشدار و نتیجهٔ عملیات جداگانه دریافت می‌شوند.']}],
                      'actions':([{'label':'راهنما','query':'nav:help'},
-                     {'label':'آزمایش ویجت HTML','query':'try-widget'}] if page=='settings' else [])}
+                     {'label':'منابع زنده','query':'nav:resources'}] if page=='settings' else [])}
         elif page == 'job':
             job = self.state.get('console-job:'+str(user_id)) or {}
             state = {'page':page,'title':job.get('title','عملیات'),'selected':job.get('id',''),
@@ -88,6 +89,9 @@ class ConsoleMixin:
         return state
 
     def show_screen(self, user_id, page='overview', page_index=0, server_id='all', selected='', message=''):
+        if page=='resources':
+            with _screen_locks[user_id]:
+                return self.show_resource_screen(user_id,page_index,server_id,selected)
         state = self.console_state(user_id,page,page_index,server_id,selected)
         if message:state['message'] = message
         text, keyboard = render(state, lambda label, action, **payload:self.button(user_id,label,action,**payload))
@@ -96,6 +100,11 @@ class ConsoleMixin:
     def navigate(self, user_id, query, current=None):
         current = current or {'page':'overview','server_id':'all','selected':''}
         page = current.get('page','overview'); server_id = current.get('server_id','all')
+        if query in ('resource-pause','resource-resume') or (page=='resources' and query=='refresh'):
+            active=self.state.get('resource-active:'+str(user_id)) or {}
+            return self.show_resource_screen(user_id,active.get('p',current.get('page_index',0)),
+                active.get('scope',server_id),active.get('selected',current.get('selected','')),
+                paused=query=='resource-pause')
         if query=='refresh' or query.startswith('refresh:'):
             return self.show_screen(user_id,page,current.get('page_index',0),server_id,current.get('selected',''))
         if query.startswith('nav:'):
@@ -103,7 +112,7 @@ class ConsoleMixin:
             return self.show_screen(user_id,target,server_id=server_id if target=='forwards' else 'all')
         if query.startswith('page:'):
             _,target,index=query.split(':',2)
-            return self.show_screen(user_id,target,int(index),server_id,current.get('selected',''))
+            return self.show_screen(user_id,target,int(index),server_id,'' if target=='resources' else current.get('selected',''))
         if query.startswith('open:'):
             parts=query.split(':',3); kind=parts[1]
             if kind=='forward' and len(parts)==4:
@@ -118,7 +127,7 @@ class ConsoleMixin:
             return self.show_screen(user_id,'forwards',0,query.split(':',1)[1])
         if query=='try-widget':
             self.state.put(self.widget_delivery_key(user_id),{'retry_at':0})
-            return self.show_control_widget(user_id)
+            return self.show_screen(user_id,'resources')
         if self.users.get(user_id)!='admin':raise RuntimeError('این عملیات فقط برای مدیر فعال است.')
         if query=='resume-form':
             return self.wizard_prompt(user_id)

@@ -16,7 +16,9 @@ controls. `/start` opens a fresh console and closes an unfinished form.
   server's tunnels and resource page.
 - **Tunnels:** internal addresses, latency, MTU and endpoint state, followed by
   confirmed start/stop/restart actions for administrators.
-- **Resources:** CPU, memory, disk, transfer rates, and sample age.
+- **Resources:** a live per-server card with CPU/RAM/disk/swap meters, transfer
+  rates, sample age, server paging, and pause/resume. It refreshes every 15 seconds
+  for up to ten minutes per session; navigating away stops the session.
 - **Forwarding:** choose any managed server, inspect its HAProxy rules, toggle,
   delete, or create/edit with a guided form. `/cancel` exits a form. Old form
   controls cannot change a newer draft.
@@ -39,8 +41,9 @@ resource alerts above 90% for 120 seconds (clearing below 85%), recovery message
 and a daily report at 09:00 Asia/Tehran. Alerts remain separate messages and do
 not replace the active console.
 
-HTML widget delivery is an explicit experiment under **Settings**, also
-reachable with `/widgets`. Normal navigation never calls `sendWidget`.
+Only the resources screen attempts HTML widget delivery. The rest of the bot
+keeps native text and inline keyboards. `/hardware` opens resources; `/widgets`
+also opens resources and retries HTML delivery immediately.
 
 ## Configuration
 
@@ -102,15 +105,15 @@ Run the regression checks with `python3 scripts/check-telegram.py`.
 ### HTML widget delivery
 
 The bot calls the official `sendWidget` method in each allowed user's private
-chat. It checks the HTML and compressed payload limits before sending. Layout
-changes create a new widget because Telegram can only edit an existing widget's
-data, not its HTML.
+chat. It checks the HTML and compressed payload limits before sending. The resources widget uses its dedicated layout and persists query state with
+`editMessageWidgetData`. A closed or expired card cannot fetch live data.
 
-If Telegram replies `INPUT_MEDIA_WIDGET_NOT_ALLOWED`, the bot shows that reason
-with an inline-keyboard menu. The rejection delays retries for five minutes for
-that bot token and user only. The next menu request after the delay tries a
-widget again; **تلاش دوباره برای ویجت** retries immediately. The legacy global
-disable flag is ignored. This fallback does not mean widget delivery succeeded,
-and changing the panel code cannot grant Telegram-side sending permissions.
+If Telegram replies `INPUT_MEDIA_WIDGET_NOT_ALLOWED`, resources remain a live
+native card: a separate worker edits the same message every 15 seconds without
+blocking command polling. It shows missing or stale metrics explicitly. Exit,
+pause, or ten-minute expiry stops refresh; resume renews the session. HTML
+retries are delayed five minutes per bot/user, or requested explicitly with
+`/widgets`. A native card is not an HTML widget and does not bypass Telegram's
+widget sending permissions.
 
 Telegram API reference: https://core.telegram.org/bots/api

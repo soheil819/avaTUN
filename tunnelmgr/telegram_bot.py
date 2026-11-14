@@ -23,6 +23,7 @@ import zlib
 from zoneinfo import ZoneInfo
 from telegram_console import ConsoleMixin
 from telegram_ui import digits, render, context
+from telegram_resources import ResourceMixin
 
 
 class IPv4HTTPSConnection(http.client.HTTPSConnection):
@@ -327,6 +328,7 @@ def resource_widget_state(items, page):
     checked = resources.get('checked_at') or 0
     return {'p': page, 'n': max(1, count), 'x': {
         'ok': bool(item.get('reachable', True)) and bool(source),
+        'id':str(item.get('id',''))[:48],
         'name': str(item.get('name') or item.get('id') or 'سرور')[:80],
         'host': str(item.get('host') or '')[:100],
         'stale': bool(checked and time.time() - checked > 30),
@@ -357,18 +359,18 @@ body{margin:0;padding:10px 12px;color:var(--tg-theme-text-color);font:14px/1.35 
 <script>
 const TW=window.TelegramWidget,$=id=>document.getElementById(id);let state={p:0,n:1,x:null},busy=false;
 function num(v){return Number.isFinite(Number(v))?Number(v):0}
-function fmt(v){v=num(v);const units=['B','KiB','MiB','GiB','TiB'];let i=0;while(v>=1024&&i<units.length-1){v/=1024;i++}return v.toLocaleString(undefined,{maximumFractionDigits:1})+' '+units[i]}
+function fmt(v){v=num(v);const units=['B','KiB','MiB','GiB','TiB'];let i=0;while(v>=1024&&i<units.length-1){v/=1024;i++}return v.toLocaleString('en-US',{maximumFractionDigits:1})+' '+units[i]}
 function rate(v){return fmt(v)+'/s'}
-function draw(){const x=state.x||{},r=x.resources||{};$('name').textContent=x.name||x.id||'منابع سرور';$('host').textContent=x.host||'';$('status').textContent=x.ok===false?'دریافت آمار ناموفق بود':(x.stale?'آخرین آمار موجود':'آنلاین');
+function draw(){const x=state.x||{},r=x.resources||{};$('name').textContent=x.name||x.id||'منابع سرور';$('host').textContent=x.host||'';$('status').textContent=state.live===false?'پایش متوقف است':x.ok===false?'دریافت آمار ناموفق بود':(x.stale?'آخرین آمار موجود':'آنلاین');
 const fields=[['CPU','cpu_percent','%'],['RAM','memory_percent','%'],['دیسک','disk_percent','%'],['Swap','swap_percent','%']];
 $('metrics').innerHTML=fields.map(([label,key,suffix])=>{const p=Math.max(0,Math.min(100,num(r[key]))),used=key==='memory_percent'?fmt(r.memory_used_bytes)+' / '+fmt(r.memory_total_bytes):key==='disk_percent'?fmt(r.disk_used_bytes)+' / '+fmt(r.disk_total_bytes):key==='swap_percent'?(!num(r.swap_total_bytes)?'غیرفعال':fmt(r.swap_used_bytes)+' / '+fmt(r.swap_total_bytes)):('Load '+num(r.load_1m).toFixed(2));return '<div class="metric"><div class="line"><span>'+label+'</span><span class="value">'+p.toFixed(1)+suffix+'</span></div><div class="track"><div class="fill" style="width:'+p+'%"></div></div><div class="hint">'+used+'</div></div>'}).join('');
 $('network').innerHTML='<div class="traffic"><span class="hint">↓ دانلود</span><span class="value">'+rate(r.download_bytes_per_sec)+'</span></div><div class="traffic"><span class="hint">↑ آپلود</span><span class="value">'+rate(r.upload_bytes_per_sec)+'</span></div>';
-$('page').textContent=(state.p+1)+' از '+Math.max(1,state.n)+' سرور · '+(r.checked_at?new Date(r.checked_at*1000).toLocaleTimeString():'زمان نامشخص');$('prev').disabled=state.p<=0;$('next').disabled=state.p>=state.n-1}
+$('page').textContent=(state.p+1)+' از '+Math.max(1,state.n)+' سرور · '+(r.checked_at?new Date(r.checked_at*1000).toLocaleTimeString('en-GB',{hour12:false}):'زمان نامشخص');$('prev').disabled=state.p<=0;$('next').disabled=state.p>=state.n-1}
 function accept(value){try{const next=JSON.parse(value);if(next&&typeof next==='object'){state=next;draw()}}catch(e){$('status').textContent='پاسخ منابع قابل خواندن نیست'}}
-function ask(page){if(!TW||busy)return;busy=true;$('status').textContent='در حال به‌روزرسانی…';TW.request('resources:'+page).then(a=>{if(a&&a.result)accept(a.result);else $('status').textContent='پاسخ خالی از پنل'},e=>{$('status').textContent='اتصال موقتاً برقرار نیست'}).finally(()=>{busy=false})}
+function ask(page){if(!TW||busy||state.live===false)return;busy=true;$('status').textContent='در حال به‌روزرسانی…';TW.request('resources:'+page).then(a=>{if(a&&a.result)accept(a.result);else $('status').textContent='پاسخ خالی از پنل'},e=>{$('status').textContent='اتصال موقتاً برقرار نیست'}).finally(()=>{busy=false})}
 try{if(TW&&TW.chatData)state=JSON.parse(TW.chatData)}catch(e){}draw();
 $('prev').onclick=()=>{if(state.p>0)ask(state.p-1)};$('next').onclick=()=>{if(state.p<state.n-1)ask(state.p+1)};$('refresh').onclick=()=>ask(state.p);
-if(TW){ask(state.p);setInterval(()=>{if(TW.isActive&&!busy)ask(state.p)},15000)}
+if(TW){TW.onEvent('chatDataChanged',()=>{if(TW.chatData)accept(TW.chatData)});ask(state.p);setInterval(()=>{if(TW.isActive&&!busy&&state.live!==false)ask(state.p)},15000)}
 </script></body></html>'''
 
 TUNNEL_WIDGET_HTML = r'''<!doctype html><html><body><style>
@@ -533,7 +535,10 @@ def endpoint_report(server_id, item):
     return '\n'.join(lines)
 
 
-class Bot(ConsoleMixin):
+class Bot(ResourceMixin, ConsoleMixin):
+    resource_html = RESOURCE_WIDGET_HTML
+    resource_data = staticmethod(resource_widget_state)
+    resource_size = staticmethod(size)
     def __init__(self, config, panel=None, telegram=None, state=None):
         self.config = config
         self.users = {int(user): 'viewer' for user in config.get('viewers', [])}
@@ -1099,26 +1104,7 @@ class Bot(ConsoleMixin):
         return self.show_control_widget(user_id, 'forwards', server_id=server_id)
 
     def resource_widget_query(self, query):
-        sender = query.get('from', {}).get('id')
-        chat = query.get('chat') or {}
-        authorized = (sender in self.users and chat.get('type') == 'private'
-                      and chat.get('id') == sender)
-        data = query.get('data', '')
-        response = {'p': 0, 'n': 1, 'x': {'ok': False, 'name': 'منابع سرور', 'resources': {}}}
-        if authorized and isinstance(data, str) and len(data.encode('utf-8')) <= 64:
-            match = re.fullmatch(r'resources:(\d{1,5})', data)
-            if match:
-                try:
-                    items = self.panel.request('/api/v1/servers/resources', timeout=8)['items']
-                    response = resource_widget_state(items, int(match.group(1)))
-                except (OSError, ValueError, KeyError, RuntimeError):
-                    response['x']['name'] = 'منابع در دسترس نیست'
-        try:
-            self.telegram.request('answerWidgetQuery', {
-                'widget_query_id': query['id'],
-                'data': json.dumps(response, ensure_ascii=False, separators=(',', ':'))})
-        except (OSError, ValueError, KeyError, RuntimeError) as error:
-            logging.warning('Widget query response failed (%s)', type(error).__name__)
+        return self.answer_resource_query(query)
 
     def status_widget_query(self, query):
         sender = query.get('from', {}).get('id')
@@ -1310,7 +1296,7 @@ class Bot(ConsoleMixin):
             return
         if action=='widget-retry':
             self.state.put(self.widget_delivery_key(user_id), {'retry_at':0})
-            self.show_control_widget(user_id,'overview')
+            self.show_screen(user_id,'resources')
             return
         widget_pages={'home':'overview','status':'overview','servers':'servers','servers-text':'servers',
                       'tunnels':'tunnels','tunnel-widget':'tunnels','hardware':'resources',
@@ -1529,6 +1515,7 @@ class Bot(ConsoleMixin):
                            '/report': 'report', '/audit': 'audit', '/update': 'update-check',
                            '/settings':'settings', '/widgets':'open-widget'}
                 if command=='/start':
+                    self.leave_resource_screen(sender)
                     self.wizard_clear(sender)
                     self.state.put('console:'+str(sender),None)
                 if command not in actions:
@@ -1614,6 +1601,7 @@ class Bot(ConsoleMixin):
                     ('forwards','فوروارد'),('report','گزارش 24 ساعت'),('update','به‌روزرسانی پنل'),
                     ('audit','عملیات اخیر'),('settings','تنظیمات و راهنما'),('cancel','لغو فرم جاری'))]})
         self.set_status('ready')
+        self.run_resource_refresh()
         next_monitor = 0
         while True:
             try:

@@ -1,3 +1,9 @@
+## avaTUN 0.2.13
+
+- Make only the Telegram resources screen a live per-server card with CPU/RAM/disk/swap meters, upload/download rates, sample age, and 15-second refresh.
+- Use the dedicated resources HTML widget where permitted by Telegram. If widget delivery is rejected, refresh the native card automatically in the same message instead.
+- Add server paging, pause/resume, ten-minute live sessions, stable server selection, and cancellation on leaving resources. Persist widget query state and keep scoped resource cards restricted to their selected server.
+
 ## avaTUN 0.2.12
 
 - Redesign the Telegram bot around native, single-message screens: a compact home, named server/tunnel selectors, scoped details, pagination, timestamps, and consistent back/home/refresh controls.
