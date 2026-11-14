@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.16"
+APP_VERSION="0.2.19"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -44,6 +44,8 @@ def db():
     if "location" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN location TEXT NOT NULL DEFAULT 'abroad'")
     if "auto_geoip" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN auto_geoip INTEGER NOT NULL DEFAULT 1")
     if "geoip_host" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN geoip_host TEXT NOT NULL DEFAULT ''")
+    for column,definition in (("geo_country_code","TEXT"),("geo_country_name","TEXT"),("geo_city","TEXT"),("geo_latitude","REAL"),("geo_longitude","REAL")):
+        if column not in server_columns:c.execute(f"ALTER TABLE servers ADD COLUMN {column} {definition}")
     c.execute("CREATE TABLE IF NOT EXISTS port_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
@@ -489,43 +491,46 @@ def remove_bootstrap_key(server):
 def server_rows():
     with db() as c:return [dict(r) for r in c.execute("SELECT * FROM servers ORDER BY id")]
 
-def geoip_location(host):
+def geoip_location(host=None):
     """Return a map location from the public address GeoIP currently sees."""
     host=str(host or "").strip().strip("[]")
-    if not host:raise ValueError("IP یا نام میزبان برای GeoIP وارد نشده است")
-    try:addresses=[ipaddress.ip_address(host)]
-    except ValueError:
-        try:addresses=list(dict.fromkeys(ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host,None,type=socket.SOCK_STREAM)))
-        except Exception as e:raise ValueError("نام میزبان به IP تبدیل نشد؛ آدرس را بررسی کن") from e
-    address=next((item for item in addresses if item.is_global),None)
-    if address is None:raise ValueError("GeoIP فقط برای IP عمومی قابل استفاده است")
-    key=str(address);cached=GEOIP_CACHE.get(key)
+    if host:
+        try:addresses=[ipaddress.ip_address(host)]
+        except ValueError:
+            try:addresses=list(dict.fromkeys(ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host,None,type=socket.SOCK_STREAM)))
+            except Exception as e:raise ValueError("نام میزبان به IP تبدیل نشد؛ آدرس را بررسی کن") from e
+        address=next((item for item in addresses if item.is_global),None)
+        if address is None:raise ValueError("GeoIP فقط برای IP عمومی قابل استفاده است")
+        key=str(address)
+    else:key="@panel-egress"
+    cached=GEOIP_CACHE.get(key)
     if cached and cached["expires"]>time.time():return dict(cached["result"])
-    providers=(f"https://ipwho.is/{key}",f"https://ipapi.co/{key}/json/")
+    providers=(f"https://ipwho.is/{key}" if host else "https://ipwho.is/",f"https://ipapi.co/{key}/json/" if host else "https://ipapi.co/json/")
     failures=[];data={}
     for url in providers:
         request=urllib.request.Request(url,headers={"User-Agent":"avaTUN/0.1 GeoIP"})
         try:
             with urllib.request.urlopen(request,timeout=5,context=ssl.create_default_context()) as response:data=json.loads(response.read(32768).decode("utf-8"))
             code=str(data.get("country_code") or "").upper()
-            if data.get("success",True) and re.fullmatch(r"[A-Z]{2}",code):break
+            latitude=float(data.get("latitude"));longitude=float(data.get("longitude"))
+            if data.get("success",True) and re.fullmatch(r"[A-Z]{2}",code) and -90<=latitude<=90 and -180<=longitude<=180:break
             failures.append(str(data.get("message") or "پاسخ نامعتبر GeoIP"))
         except Exception as e:failures.append(str(e))
     else:raise RuntimeError("سرویس‌های GeoIP کشور این IP را مشخص نکردند: "+" | ".join(failures))
-    result={"location":"iran" if code=="IR" else "abroad","country_code":code,"country_name":str(data.get("country_name") or data.get("country") or code),"ip":key}
+    result={"location":"iran" if code=="IR" else "abroad","country_code":code,"country_name":str(data.get("country_name") or data.get("country") or code),"city":str(data.get("city") or ""),"latitude":latitude,"longitude":longitude,"ip":str(data.get("ip") or key)}
     GEOIP_CACHE[key]={"expires":time.time()+3600,"result":result}
     return dict(result)
 
 def refresh_server_locations():
     for item in server_rows():
-        if not item["auto_geoip"] or item["geoip_host"] == item["host"]:
+        if not item["auto_geoip"] or (item["geoip_host"] == item["host"] and item.get("geo_latitude") is not None and item.get("geo_longitude") is not None):
             continue
         try:
             result = geoip_location(item["host"])
             with db() as connection:
                 connection.execute(
-                    "UPDATE servers SET location=?,geoip_host=? WHERE id=? AND host=? AND auto_geoip=1",
-                    (result["location"], item["host"], item["id"], item["host"]),
+                    "UPDATE servers SET location=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=? AND host=? AND auto_geoip=1",
+                    (result["location"], item["host"], result["country_code"], result["country_name"], result["city"], result["latitude"], result["longitude"], item["id"], item["host"]),
                 )
         except Exception as error:
             print(f"GeoIP {item['id']}: {error}", file=sys.stderr, flush=True)
@@ -1661,12 +1666,14 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
         if proxy.get("proxy_server_id"):raise ValueError("زنجیرهٔ پروکسی SSH بیش از یک مرحله پشتیبانی نمی‌شود")
     candidate={**current,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,"location":new_location}
     connection_unchanged=all(candidate.get(k)==current.get(k) for k in ("host","user","proxy_server_id"))
-    unchanged=connection_unchanged and new_location==current.get("location","abroad") and bool(auto_geoip)==bool(current.get("auto_geoip",1)) and (not auto_geoip or current.get("geoip_host")==new_host)
+    unchanged=connection_unchanged and new_location==current.get("location","abroad") and bool(auto_geoip)==bool(current.get("auto_geoip",1)) and (not auto_geoip or (current.get("geoip_host")==new_host and current.get("geo_latitude") is not None and current.get("geo_longitude") is not None))
+    geo_values=(geoip_result["country_code"],geoip_result["country_name"],geoip_result["city"],geoip_result["latitude"],geoip_result["longitude"]) if geoip_result else ((current.get("geo_country_code"),current.get("geo_country_name"),current.get("geo_city"),current.get("geo_latitude"),current.get("geo_longitude")) if new_host==old_host else (None,None,None,None,None))
+    geoip_host=new_host if geoip_result else (current.get("geoip_host","") if new_host==old_host else "")
     password=str(password or "")
     if len(password)>1024:raise ValueError("گذرواژه SSH بیش از حد طولانی است")
     if unchanged and not password:return {"ok":True,"location":new_location,"geoip":geoip_result,"geoip_error":geoip_error,"updated_tunnels":0,"updated_endpoints":0,"restarted_endpoints":0,"unchanged":True}
     if connection_unchanged and not password:
-        with db() as c:c.execute("UPDATE servers SET location=?,auto_geoip=?,geoip_host=? WHERE id=?",(new_location,int(auto_geoip),new_host if geoip_result else "",server_id))
+        with db() as c:c.execute("UPDATE servers SET location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(new_location,int(auto_geoip),geoip_host,*geo_values,server_id))
         return {"ok":True,"server":server_id,"location":new_location,"geoip":geoip_result,"geoip_error":geoip_error,"updated_tunnels":0,"updated_endpoints":0,"restarted_endpoints":0}
     if password:
         identity=pathlib.Path(current.get("identity", ""))
@@ -1683,8 +1690,8 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
     probe=subprocess.run(ssh_argv(candidate)+["true"],capture_output=True,text=True,timeout=25)
     if probe.returncode:raise RuntimeError("اتصال SSH با IP، کاربر و پراکسی جدید برقرار نشد؛ اطلاعات ذخیره نشدند: "+(probe.stderr or probe.stdout)[-800:])
     dependents=[s for s in servers.values() if s["id"]!=server_id and s.get("proxy_server_id")==server_id]
-    previous_connection={k:current.get(k,"") for k in ("host","user","proxy_server_id","location","auto_geoip","geoip_host")}
-    with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=? WHERE id=?",(new_host,new_user,new_proxy_id,new_location,int(auto_geoip),new_host if geoip_result else "",server_id))
+    previous_connection={k:current.get(k,"") for k in ("host","user","proxy_server_id","location","auto_geoip","geoip_host","geo_country_code","geo_country_name","geo_city","geo_latitude","geo_longitude")}
+    with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(new_host,new_user,new_proxy_id,new_location,int(auto_geoip),geoip_host,*geo_values,server_id))
     endpoints=[];applied=[]
     try:
         servers={s["id"]:s for s in server_rows()}
@@ -1720,7 +1727,7 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
                 if sid=="local":update_tunnel({**before,"id":tid})
                 else:server_remote(srv,{"op":"update","data":{**before,"id":tid}})
             except Exception as rollback:rollback_errors.append(f"{sid}/{tid}: {rollback}")
-        with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=? WHERE id=?",(previous_connection["host"],previous_connection["user"],previous_connection["proxy_server_id"],previous_connection["location"],previous_connection["auto_geoip"],previous_connection["geoip_host"],server_id))
+        with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(previous_connection["host"],previous_connection["user"],previous_connection["proxy_server_id"],previous_connection["location"],previous_connection["auto_geoip"],previous_connection["geoip_host"],previous_connection["geo_country_code"],previous_connection["geo_country_name"],previous_connection["geo_city"],previous_connection["geo_latitude"],previous_connection["geo_longitude"],server_id))
         suffix=("؛ بازگردانی ناقص: "+" | ".join(rollback_errors)) if rollback_errors else ""
         raise RuntimeError("به‌روزرسانی اتصال سرور ناموفق شد؛ تغییر اتصال و تونل‌های انجام‌شده برگردانده شدند: "+str(error)+suffix)
     return {"ok":True,"server":server_id,"old_host":old_host,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,"location":new_location,"geoip":geoip_result,"geoip_error":geoip_error,"updated_tunnels":len({x[2] for x in endpoints}),"updated_endpoints":len(endpoints),"restarted_endpoints":len(endpoints),"unavailable_servers":[]}
@@ -1775,6 +1782,8 @@ def server(host,port):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/index.html";return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
             if route=="/assets/Yekan.woff2":
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/Yekan.woff2";return self.send(200,f.read_bytes(),"font/woff2")
+            if route=="/assets/world_equirectangular_4096x2048.png":
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/world_equirectangular_4096x2048.png";return self.send(200,f.read_bytes(),"image/png")
             if route in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg"):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web"/route.lstrip("/");return self.send(200,f.read_bytes(),"image/svg+xml")
             if route=="/admin":
@@ -1823,6 +1832,11 @@ def server(host,port):
                 return self.send(200,{"items":[*local,*remote]})
             if route=="/api/v1/tunnels":return self.send(200,{"items":attach_speedtests(rows())})
             if route=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
+            if route=="/api/v1/geoip/local":
+                try:
+                    result=geoip_location()
+                    return self.send(200,{k:v for k,v in result.items() if k!="ip"})
+                except Exception as e:return self.send(200,{"error":str(e)})
             if route=="/api/v1/servers/status":
                 with MONITOR_LOCK:statuses=[dict(item,tunnels=attach_speedtests(item.get("tunnels",[]))) for item in MONITOR_SERVERS]
                 return self.send(200,{"items":statuses})
@@ -2057,7 +2071,8 @@ def server(host,port):
                             srv=bootstrap_server({"id":ident,"host":host,"user":user,"identity":"","proxy_server_id":proxy_id},data["ssh_password"])
                             identity=srv["identity"]
                         else:raise ValueError("گذرواژهٔ SSH یا کلید خصوصی را وارد کن")
-                        with db() as c:c.execute("INSERT INTO servers(id,host,user,identity,proxy_server_id,location,auto_geoip,geoip_host) VALUES(?,?,?,?,?,?,?,?)",(ident,host,user,identity,proxy_id,location,int(auto_geoip),host if geoip_result else ""))
+                        geo_values=(geoip_result["country_code"],geoip_result["country_name"],geoip_result["city"],geoip_result["latitude"],geoip_result["longitude"]) if geoip_result else (None,None,None,None,None)
+                        with db() as c:c.execute("INSERT INTO servers(id,host,user,identity,proxy_server_id,location,auto_geoip,geoip_host,geo_country_code,geo_country_name,geo_city,geo_latitude,geo_longitude) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(ident,host,user,identity,proxy_id,location,int(auto_geoip),host if geoip_result else "",*geo_values))
                         if data.get("install"):
                             srv={"id":ident,"host":host,"user":user,"identity":identity,"proxy_server_id":proxy_id}
                             try:return self.send(201,{"ok":True,"server":ident,"location":location,"geoip":geoip_result,"geoip_error":geoip_error,"install":install_remote(srv)})

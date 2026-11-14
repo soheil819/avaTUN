@@ -1,3 +1,15 @@
+## avaTUN 0.2.19
+
+- Allow vertical as well as horizontal globe rotation; automatically place server labels to prevent overlaps.
+
+## avaTUN 0.2.18
+
+- Use the supplied equirectangular world map as the overview globe texture.
+
+## avaTUN 0.2.17
+
+- Add a GeoIP globe with server positions and tunnel routes to the overview.
+
 ## 0.2.16 · beta17
 
 - Restore strongSwan table 220 routing during IPsec profile startup and bind speed tests to the actual inner source IP.
