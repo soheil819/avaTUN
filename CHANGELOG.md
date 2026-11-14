@@ -1,3 +1,7 @@
+## avaTUN 0.2.29 · تلاش دوبارهٔ ویجت
+
+- Remove the Telegram widget delivery cooldown so each `/start` retries widget delivery immediately.
+
 ## avaTUN 0.2.28 · محافظت از پیام‌های ربات
 
 - Protect native Telegram bot messages from forwarding and saving, matching the existing widget protection.

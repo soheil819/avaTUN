@@ -647,8 +647,8 @@ class Bot(ResourceMixin, ConsoleMixin):
     def widget_delivery_fallback(self, user_id, state):
         state = dict(state)
         notice = ('تلگرام ارسال ویجت را رد کرده است (INPUT_MEDIA_WIDGET_NOT_ALLOWED). '
-                  'فعلاً منوی دکمه‌ای نمایش داده می‌شود. پس از 5 دقیقه، با بازکردن دوبارهٔ منو '
-                  'ارسال ویجت دوباره امتحان می‌شود؛ دکمهٔ زیر همین حالا تلاش می‌کند.')
+                  'فعلاً منوی دکمه‌ای نمایش داده می‌شود. با هر بار فرستادن /start، '
+                  'ارسال ویجت دوباره امتحان می‌شود.')
         state['message'] = '\n'.join(filter(None, [state.get('message'), notice]))
         self.widget_fallback(user_id, state)
 
@@ -870,10 +870,6 @@ class Bot(ResourceMixin, ConsoleMixin):
         if message:
             state['message']=message
         delivery_key = self.widget_delivery_key(user_id)
-        delivery = self.state.get(delivery_key) or {}
-        if delivery.get('retry_at', 0) > time.time():
-            self.widget_delivery_fallback(user_id,state)
-            return
         # Telegram cannot replace the HTML of an existing widget. Send a new
         # message after a layout upgrade instead of editing the old widget's data.
         layout = hashlib.sha256(CONTROL_WIDGET_HTML.encode()).hexdigest()
@@ -903,8 +899,7 @@ class Bot(ResourceMixin, ConsoleMixin):
         except RuntimeError as error:
             if 'INPUT_MEDIA_WIDGET_NOT_ALLOWED' not in str(error):raise
             logging.warning('Telegram rejected sendWidget with INPUT_MEDIA_WIDGET_NOT_ALLOWED; retry after 300 seconds.')
-            self.state.put(delivery_key, {'error':'INPUT_MEDIA_WIDGET_NOT_ALLOWED',
-                                         'retry_at':time.time()+300})
+            self.state.put(delivery_key, {'error':'INPUT_MEDIA_WIDGET_NOT_ALLOWED','retry_at':0})
             self.widget_delivery_fallback(user_id,state)
             return
         self.state.put(delivery_key, {'retry_at':0})
