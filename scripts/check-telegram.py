@@ -51,6 +51,9 @@ class FakeTelegram:
 
     def request(self, *args):
         self.requests.append(args)
+        if args[0] in ('sendMessage','editMessageText'):
+            self.messages.append((args[1]['chat_id'],args[1]['text'],args[1].get('reply_markup',{}).get('inline_keyboard',[])))
+            return {'message_id':args[1].get('message_id',len(self.requests)), 'chat':{'id':args[1]['chat_id']}}
         if args[0] == 'sendWidget':
             return {'message_id':len(self.requests),'chat':{'id':args[1]['chat_id']}}
         return True
@@ -149,7 +152,7 @@ class BotChecks(unittest.TestCase):
         with patch.object(self.telegram, 'send', side_effect=RuntimeError('offline')):
             self.state.deliver(self.telegram, self.bot.scrub)
         self.update(1, '/start')
-        self.assertTrue(any(r[0] == 'sendWidget' for r in self.telegram.requests))
+        self.assertTrue(any(r[0] == 'sendMessage' for r in self.telegram.requests))
         self.assertEqual(1, self.state.connection.execute('SELECT COUNT(*) FROM notifications WHERE sent=0').fetchone()[0])
 
     def test_single_endpoint_is_unknown(self):
@@ -167,11 +170,10 @@ class BotChecks(unittest.TestCase):
 
     def test_admin_and_viewer_menus(self):
         self.bot.tunnel(2, 'gre-test')
-        actions = json.loads(self.telegram.requests[-1][1]['chat_data'])['actions']
-        self.assertFalse(any(x['query'].startswith('confirm:') for x in actions))
+        keyboard = self.telegram.messages[-1][2]
+        self.assertNotIn('توقف', str(keyboard))
         self.bot.tunnel(1, 'gre-test')
-        actions = json.loads(self.telegram.requests[-1][1]['chat_data'])['actions']
-        self.assertTrue(any(x['query'] == 'confirm:restart:gre-test' for x in actions))
+        self.assertIn('توقف', str(self.telegram.messages[-1][2]))
 
 
 class ClientChecks(unittest.TestCase):
@@ -235,35 +237,39 @@ class WidgetChecks(unittest.TestCase):
         self.state.connection.close()
         self.folder.cleanup()
 
+    def deny_widget(self, method, data):
+        if method=='sendWidget':raise self.denied
+        return {'message_id':43,'chat':{'id':data.get('chat_id')}}
+
     def test_legacy_global_disable_does_not_block_widget_delivery(self):
         self.state.put('telegram-widget-disabled', True)
         with patch.object(self.telegram, 'request', return_value=self.sent) as request:
-            self.bot.home(1)
+            self.bot.show_control_widget(1)
         self.assertEqual('sendWidget', request.call_args.args[0])
         self.assertEqual([], self.telegram.messages)
 
     def test_denial_is_visible_and_cooldown_is_scoped_to_chat(self):
-        with patch.object(self.telegram, 'request', side_effect=self.denied) as request:
-            self.bot.home(1)
-            self.bot.home(1)
-            self.assertEqual(1, request.call_count)
-            self.bot.home(2)
-            self.assertEqual(2, request.call_count)
-        self.assertIn('INPUT_MEDIA_WIDGET_NOT_ALLOWED', self.telegram.messages[0][1])
+        with patch.object(self.telegram, 'request', side_effect=self.deny_widget) as request:
+            self.bot.show_control_widget(1)
+            self.bot.show_control_widget(1)
+            self.assertEqual(1, sum(c.args[0]=='sendWidget' for c in request.call_args_list))
+            self.bot.show_control_widget(2)
+            self.assertEqual(2, sum(c.args[0]=='sendWidget' for c in request.call_args_list))
+        self.assertIn('INPUT_MEDIA_WIDGET_NOT_ALLOWED', str(request.call_args_list))
         self.assertGreater(self.state.get(self.bot.widget_delivery_key(1))['retry_at'], time.time())
 
     def test_denial_does_not_disable_a_different_bot(self):
         self.state.put(self.bot.widget_delivery_key(1), {'retry_at':time.time()+300})
         self.bot.config['bot_token'] = 'other-token'
         with patch.object(self.telegram, 'request', return_value=self.sent) as request:
-            self.bot.home(1)
+            self.bot.show_control_widget(1)
         request.assert_called_once()
 
     def test_cooldown_expires_and_success_clears_failure(self):
-        with patch.object(self.telegram, 'request', side_effect=self.denied), patch.object(tg.time, 'time', return_value=1000):
-            self.bot.home(1)
+        with patch.object(self.telegram, 'request', side_effect=self.deny_widget), patch.object(tg.time, 'time', return_value=1000):
+            self.bot.show_control_widget(1)
         with patch.object(self.telegram, 'request', return_value=self.sent) as request, patch.object(tg.time, 'time', return_value=1301):
-            self.bot.home(1)
+            self.bot.show_control_widget(1)
         request.assert_called_once()
         self.assertEqual({'retry_at':0}, self.state.get(self.bot.widget_delivery_key(1)))
 
@@ -276,14 +282,14 @@ class WidgetChecks(unittest.TestCase):
     def test_upgraded_html_creates_new_widget_unchanged_layout_edits_data(self):
         self.state.put('control-widget:1', {'chat_id':1,'message_id':41,'layout':'old-layout'})
         with patch.object(self.telegram, 'request', return_value=self.sent) as request:
-            self.bot.home(1)
-            self.bot.home(1)
+            self.bot.show_control_widget(1)
+            self.bot.show_control_widget(1)
         self.assertEqual(['sendWidget','editMessageWidgetData'], [c.args[0] for c in request.call_args_list])
 
     def test_ambiguous_transport_error_is_not_turned_into_denial(self):
         with patch.object(self.telegram, 'request', side_effect=RuntimeError('Telegram connection failed')):
             with self.assertRaisesRegex(RuntimeError, 'connection failed'):
-                self.bot.home(1)
+                self.bot.show_control_widget(1)
         self.assertIsNone(self.state.get(self.bot.widget_delivery_key(1)))
 
     def test_widget_html_limits_are_checked_before_request(self):
@@ -300,7 +306,7 @@ class WidgetChecks(unittest.TestCase):
 
     def test_fallback_confirmation_is_consumed_before_execution(self):
         button = self.bot.button(1, 'confirm', 'widget-fallback-execute', operation={'kind':'tunnel'})
-        with patch.object(self.bot, 'execute_widget_fallback') as execute:
+        with patch.object(self.bot, 'start_operation') as execute:
             for update_id in (1,2):
                 self.bot.handle_update({'update_id':update_id,'callback_query':{
                     'id':str(update_id),'from':{'id':1},'data':button['callback_data'],
@@ -319,9 +325,132 @@ class WidgetChecks(unittest.TestCase):
         self.bot.fallback_confirm(1, 'delete?', {}, context)
         token = self.telegram.messages[-1][2][0][1]['callback_data']
         entry = self.bot.callbacks[token]
-        with patch.object(self.bot, 'show_control_widget') as show:
+        with patch.object(self.bot, 'show_screen') as show:
             self.bot.dispatch(1, entry['action'], entry['payload'])
         show.assert_called_once_with(1, 'forward', 0, 'peer', 'rule')
+
+
+class ConsoleChecks(unittest.TestCase):
+    setUp = BotChecks.setUp
+    tearDown = BotChecks.tearDown
+    update = BotChecks.update
+    def test_native_home_never_attempts_widget_delivery(self):
+        self.update(1,'/start')
+        methods=[r[0] for r in self.telegram.requests]
+        self.assertIn('sendMessage',methods)
+        self.assertNotIn('sendWidget',methods)
+        text=self.telegram.messages[-1][1]
+        self.assertNotIn('INPUT_MEDIA',text)
+        self.assertIn('آخرین دریافت',text)
+
+    def test_navigation_edits_single_message_and_has_named_rows(self):
+        self.update(1,'/start')
+        self.bot.show_screen(1,'servers')
+        self.bot.show_screen(1,'tunnels')
+        self.assertEqual(1,sum(r[0]=='sendMessage' for r in self.telegram.requests))
+        self.assertEqual(2,sum(r[0]=='editMessageText' for r in self.telegram.requests))
+        labels=str(self.telegram.messages[-1][2])
+        self.assertIn('gre-test',labels)
+        self.assertIn('خانه',labels)
+        self.assertIn('بازگشت',labels)
+
+    def test_navigation_button_survives_new_bot_instance(self):
+        self.update(1,'/start')
+        token=self.telegram.messages[-1][2][0][0]['callback_data']
+        self.bot=tg.Bot(self.bot.config,self.panel,self.telegram,self.state)
+        self.update(1,callback=token)
+        self.assertIn('سرورها',self.telegram.messages[-1][1])
+
+    def test_confirmation_consumption_survives_new_bot_instance(self):
+        token=self.bot.button(1,'run','run-operation',operation={})['callback_data']
+        with patch.object(self.bot,'start_operation') as start:
+            self.update(1,callback=token)
+            start.assert_called_once()
+        self.bot=tg.Bot(self.bot.config,self.panel,self.telegram,self.state)
+        with patch.object(self.bot,'start_operation') as start:
+            self.update(1,callback=token)
+            start.assert_not_called()
+
+    def test_cancel_and_start_are_not_interpreted_as_wizard_input(self):
+        self.bot.start_forward_wizard(1,'local')
+        self.update(1,'/cancel')
+        self.assertIsNone(self.bot.wizard_get(1))
+        self.bot.start_forward_wizard(1,'local')
+        self.update(1,'/start')
+        self.assertIsNone(self.bot.wizard_get(1))
+
+    def test_input_and_output_digits_are_ascii_and_html_escaped(self):
+        from telegram_ui import digits, render
+        self.assertEqual('123123123',digits('۱۲۳١٢٣１２３'))
+        self.bot.wizard_save(1,{'step':'listen_port','action':'create','server_id':'local'})
+        self.bot.wizard_text(1,'۲۰۵۳')
+        self.assertEqual(2053,self.bot.wizard_get(1)['listen_port'])
+        text,_=render({'page':'servers','title':'<script>۱۲۳</script>','rows':[]},lambda *a,**k:{})
+        self.assertNotIn('<script>',text)
+        self.assertIn('&lt;script&gt;123',text)
+
+    def test_all_managed_servers_are_available_for_forward_selection(self):
+        self.panel.data['servers']=[{'id':'s'+str(i),'host':'192.0.2.1'} for i in range(10)]
+        seen=[]
+        for p in range(3):
+            state=self.bot.console_state(1,'forward_servers',p)
+            seen.extend(x['query'] for x in state['rows'])
+        self.assertIn('select-forward-server:s9',seen)
+        self.assertEqual(11,len(seen))
+
+    def test_selected_server_is_preserved_when_returning_from_forward(self):
+        with patch.object(self.bot,'show_screen') as show:
+            self.bot.navigate(1,'nav:forwards',{'page':'forward','server_id':'peer','selected':'demo'})
+        show.assert_called_once_with(1,'forwards',server_id='peer')
+
+    def test_viewer_cannot_reach_admin_routes_by_constructing_queries(self):
+        for query in ('nav:forward_servers','nav:update','cf:delete:demo','confirm:stop:gre-test'):
+            with self.assertRaises(RuntimeError):self.bot.navigate(2,query)
+        with self.assertRaises(RuntimeError):self.bot.start_operation(2,{})
+
+    def test_native_confirmation_does_not_mutate_until_accepted(self):
+        self.bot.navigate(1,'confirm:stop:gre-test',{'page':'tunnel','selected':'gre-test'})
+        self.assertEqual([],self.panel.operations)
+        self.assertIn('اتصال‌های عبوری',self.telegram.messages[-1][1])
+        token=self.telegram.messages[-1][2][0][0]['callback_data']
+        with patch.object(self.bot,'start_operation') as start:
+            self.update(1,callback=token)
+        self.assertEqual('stop',start.call_args.args[1]['action'])
+
+    def test_long_operation_starts_in_background_and_duplicate_is_refused(self):
+        operation={'kind':'tunnel','target':'gre-test','action':'restart','expected':['local','peer']}
+        with patch('telegram_console.threading.Thread') as thread:
+            self.bot.start_operation(1,operation)
+            self.bot.start_operation(1,operation)
+        thread.assert_called_once()
+        thread.return_value.start.assert_called_once()
+        self.assertEqual([],self.panel.operations)
+
+    def test_uneditable_message_is_replaced_but_network_error_is_not_replayed(self):
+        self.bot.home(1)
+        saved=self.state.get('console:1')
+        with patch.object(self.telegram,'request',side_effect=[RuntimeError("message can't be edited"),{'message_id':99}]) as request:
+            self.bot.home(1)
+        self.assertEqual(['editMessageText','sendMessage'],[x.args[0] for x in request.call_args_list])
+        with patch.object(self.telegram,'request',side_effect=RuntimeError('connection failed')) as request:
+            with self.assertRaises(RuntimeError):self.bot.home(1)
+        request.assert_called_once()
+
+    def test_stale_wizard_controls_cannot_change_new_draft(self):
+        self.bot.wizard_save(1,{'step':'algorithm'})
+        button=self.bot.button(1,'old','wizard-set',key='algorithm',value='source')
+        self.bot.wizard_save(1,{'step':'algorithm'})
+        self.update(1,callback=button['callback_data'])
+        self.assertNotIn('algorithm',self.bot.wizard_get(1))
+
+    def test_worker_reports_partial_result_without_replaying(self):
+        config={**self.bot.config,'state_path':str(self.path)}
+        worker=tg.Bot(config,self.panel,self.telegram,tg.State(self.path))
+        self.panel.operate=lambda *args:['local ✅','peer ❌']
+        self.state.put('console-job:1',{'id':'test','state':'running','title':'restart'})
+        with patch.object(self.bot,'operation_worker',return_value=worker):
+            self.bot._console_worker(1,'test',{'kind':'tunnel','target':'gre-test','action':'restart','expected':['local','peer']})
+        self.assertEqual('partial',self.state.get('console-job:1')['state'])
 
 
 class ForwardChecks(unittest.TestCase):

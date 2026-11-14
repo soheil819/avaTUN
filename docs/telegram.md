@@ -5,30 +5,42 @@ It runs on the central panel server and controls all registered tunnel endpoints
 through the same API used by the dashboard. Python 3.11 and the standard library
 are sufficient. No inbound Telegram port or webhook is needed.
 
-## Features
+## Interface and behavior
 
-- Private inline menus for overview, server status, CPU/RAM/disk/swap and upload/download.
-- Live server status widget with online state, tunnel count, installed version, service state, server details, and 15-second refresh.
-- Live tunnel widget with status, protocol, peer addresses and latency, plus
-  per-tunnel details and confirmed two-sided operations.
-- Confirmed start/stop/restart of both tunnel endpoints. A partial failure names
-  the failed endpoint. Ambiguous mutations are never retried automatically.
-- Live diagnostics using each endpoint's status/probe API.
-- HAProxy status widget and rules, primary/backup backend health, and confirmed
-  enable/disable, edit, delete, or create flows. The guided bot form configures
-  listener IP/port, destination port, balancing algorithm, PROXY protocol,
-  health-check PROXY behavior, session shutdown, tunnel backends, their roles,
-  and weights. The panel API validates and applies the final configuration.
-  Disabling preserves the rule in the panel database for later re-enabling.
-- Server/tunnel/panel outage alerts after 60 seconds, plus recovery notifications.
-- Resource alerts above 90% for 120 seconds, clearing below 85%.
-- Daily report at 09:00 Asia/Tehran by default, plus `/report` on demand.
-- Numeric user allowlists, admin/viewer roles, operation audit and one-use
-  confirmation buttons. Callback buttons expire after ten minutes or a restart.
-- Admin-only `/update` checks GitHub and offers a confirmed background update;
-  admins are also notified once when a newer version is found.
-- Persistent polling offset, incidents and pending notifications in SQLite.
-  A failed delivery does not prevent the bot from receiving new commands.
+The main interface uses Telegram's native HTML text and inline keyboards. It
+edits a single console message when navigating, with a compact home, named
+server/tunnel buttons, contextual actions, pagination, and back/home/refresh
+controls. `/start` opens a fresh console and closes an unfinished form.
+
+- **Servers:** connection, service/version, resource summary, and links to that
+  server's tunnels and resource page.
+- **Tunnels:** internal addresses, latency, MTU and endpoint state, followed by
+  confirmed start/stop/restart actions for administrators.
+- **Resources:** CPU, memory, disk, transfer rates, and sample age.
+- **Forwarding:** choose any managed server, inspect its HAProxy rules, toggle,
+  delete, or create/edit with a guided form. `/cancel` exits a form. Old form
+  controls cannot change a newer draft.
+- **Updates:** inspect the installed/GitHub version, request a check, then confirm
+  installation of the specific commit shown.
+- **Reports and audit:** 24-hour incidents, recent operations, and daily reports.
+
+Callback buttons are bound to a user and stored in SQLite. Navigation lasts up
+to 24 hours across restarts; operational confirmations expire after 3 minutes
+and are consumed before execution. Confirmed operations run in background
+workers so polling stays responsive. Partial endpoint failures are reported.
+An interrupted mutation is never replayed automatically after a restart.
+
+All displayed and entered decimal digits are converted to ASCII. Dynamic HTML
+is escaped. Viewer accounts can inspect status/resources/reports; forwarding,
+audit, settings and updates require an administrator.
+
+Monitoring retains debounced server/tunnel/panel outages after 60 seconds,
+resource alerts above 90% for 120 seconds (clearing below 85%), recovery messages,
+and a daily report at 09:00 Asia/Tehran. Alerts remain separate messages and do
+not replace the active console.
+
+HTML widget delivery is an explicit experiment under **Settings**, also
+reachable with `/widgets`. Normal navigation never calls `sendWidget`.
 
 ## Configuration
 
@@ -79,11 +91,11 @@ message, Telegram cannot deliver private notifications. An existing webhook must
 be removed before polling is activated. The bot reports this configuration error
 and does not delete an existing webhook automatically.
 
-Available commands are `/start`, `/status`, `/servers` (live server widget), `/tunnels` (live tunnel widget),
-`/tunnel_list`, `/hardware`, `/forwards` and `/haproxy`, `/report` and `/audit`
-(admins). HAProxy configuration is administrator-only. Use `journalctl -u avatun-telegram`
-for logs. Credentials are redacted from outgoing error messages and network
-exceptions are logged by type only.
+Commands: `/start`, `/status`, `/servers`, `/tunnels`, `/hardware`, `/report`,
+`/help`, `/cancel`. Administrators also have `/forwards`, `/update`, `/audit`,
+and `/settings`. Legacy `/tunnel_list` and `/haproxy` aliases still work.
+Use `journalctl -u avatun-telegram` for logs. Credentials are redacted from
+outgoing error messages and network exceptions are logged by type only.
 
 Run the regression checks with `python3 scripts/check-telegram.py`.
 

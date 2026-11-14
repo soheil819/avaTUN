@@ -21,6 +21,8 @@ import urllib.parse
 import urllib.request
 import zlib
 from zoneinfo import ZoneInfo
+from telegram_console import ConsoleMixin
+from telegram_ui import digits, render, context
 
 
 class IPv4HTTPSConnection(http.client.HTTPSConnection):
@@ -531,7 +533,7 @@ def endpoint_report(server_id, item):
     return '\n'.join(lines)
 
 
-class Bot:
+class Bot(ConsoleMixin):
     def __init__(self, config, panel=None, telegram=None, state=None):
         self.config = config
         self.users = {int(user): 'viewer' for user in config.get('viewers', [])}
@@ -546,6 +548,8 @@ class Bot:
         self.widget_views = {}
         self.widget_confirmation_lock = threading.Lock()
         self.zone = ZoneInfo(config.get('timezone', 'Asia/Tehran'))
+        with self.state.connection:
+            self.state.connection.execute("DELETE FROM meta WHERE key LIKE 'callback:%' AND json_extract(value,'$.expires')<?", (time.time(),))
         state_path = config.get('state_path') or self.state.path
         self.status_path = pathlib.Path(state_path).with_name('telegram-status.json')
 
@@ -567,7 +571,12 @@ class Bot:
         return re.sub(r'(?i)((?:password|token|psk|secret)\s*[=:]\s*)[^\s,;]+', r'\1[حذف‌شده]', text)
 
     def send(self, user_id, text, keyboard=None):
-        self.telegram.send(user_id, self.scrub(text), keyboard)
+        rows = list(keyboard or [])
+        if self.wizard_get(user_id):
+            rows.append([self.button(user_id,'لغو فرم','cancel')])
+        elif not rows:
+            rows.append([self.button(user_id,'خانه','home')])
+        self.present(user_id,text,rows)
 
     def button(self, user_id, label, action, **payload):
         now = time.time()
@@ -575,23 +584,28 @@ class Bot:
         if len(self.callbacks) >= 2048:
             self.callbacks.pop(next(iter(self.callbacks)))
         token = secrets.token_urlsafe(12)
-        self.callbacks[token] = {'user': user_id, 'action': action, 'payload': payload, 'expires': now + 600}
-        return {'text': label, 'callback_data': token}
+        if action.startswith('wizard-'):
+            payload['wizard_revision'] = (self.wizard_get(user_id) or {}).get('revision')
+        once = action.startswith('execute-') or action in ('widget-fallback-execute','run-operation','wizard-apply')
+        entry = {'user':user_id,'action':action,'payload':payload,'expires':now+(180 if once else 86400),'once':once}
+        self.callbacks[token] = entry
+        self.state.put('callback:'+token,entry)
+        return {'text':digits(label)[:60], 'callback_data':token}
 
     def home(self, user_id):
-        return self.show_control_widget(user_id, 'overview')
+        return self.show_screen(user_id, 'overview')
 
     def status(self, user_id):
-        return self.show_control_widget(user_id, 'overview')
+        return self.show_screen(user_id, 'overview')
 
     def servers(self, user_id, page=0):
-        return self.show_control_widget(user_id, 'servers', page)
+        return self.show_screen(user_id, 'servers', page)
 
     def servers_text(self, user_id, page=0):
-        return self.show_control_widget(user_id, 'servers', page)
+        return self.show_screen(user_id, 'servers', page)
 
     def server(self, user_id, server_id):
-        return self.show_control_widget(user_id, 'server', server_id=server_id, selected=server_id)
+        return self.show_screen(user_id, 'server', server_id=server_id, selected=server_id)
 
     def pagination(self, user_id, action, page, count, **payload):
         buttons = []
@@ -602,16 +616,16 @@ class Bot:
         return ([buttons] if buttons else []) + [[self.button(user_id, 'منوی اصلی', 'home')]]
 
     def tunnels(self, user_id, page=0, server_id=None):
-        return self.show_control_widget(user_id, 'tunnels', page, server_id or 'all')
+        return self.show_screen(user_id, 'tunnels', page, server_id or 'all')
 
     def tunnel(self, user_id, tunnel_id):
-        return self.show_control_widget(user_id, 'tunnel', selected=tunnel_id)
+        return self.show_screen(user_id, 'tunnel', selected=tunnel_id)
 
     def diagnose(self, user_id, tunnel_id):
-        return self.show_control_widget(user_id, 'tunnel', selected=tunnel_id)
+        return self.show_screen(user_id, 'tunnel', selected=tunnel_id)
 
     def hardware(self, user_id):
-        return self.show_control_widget(user_id, 'resources')
+        return self.show_screen(user_id, 'resources')
 
     def widget(self, user_id, html, state, caption):
         source = html.encode('utf-8')
@@ -692,14 +706,14 @@ class Bot:
             entries=sorted((k,v) for k,v in groups.items() if server_id=='all' or server_id in v)
             visible=pages(entries,page_index,'تونل‌ها')
             for ident,endpoints in visible:
-                values=list(endpoints.values());ts=tunnel_state(endpoints);kinds=sorted({str(x.get('metadata',{}).get('transport') or x.get('kind') or 'تونل') for x in values});ips=[x.get('metadata',{}).get('tun_local') or x.get('health',{}).get('interface_local_ip') or '—' for x in values];rtts=[x.get('health',{}).get('rtt_ms') for x in values if x.get('health',{}).get('rtt_ms') is not None]
+                values=list(endpoints.values());ts=tunnel_state(endpoints);kinds=sorted({str(x.get('metadata',{}).get('transport') or x.get('kind') or 'تونل') for x in values});ips=[x.get('health',{}).get('interface_local_ip') or x.get('metadata',{}).get('tun_local') or '—' for x in values];rtts=[x.get('health',{}).get('rtt_ms') for x in values if x.get('health',{}).get('rtt_ms') is not None]
                 state['rows'].append(row(ident,[(' + '.join(kinds))[:100],' ↔ '.join(str(x.get('server_id') or 'local') for x in values)[:100],'IP '+ ' ⇄ '.join(str(x) for x in ips)[:100]+' · پینگ '+(f'{max(rtts):.1f} ms' if rtts else '—')],ts,{'up':'برقرار','down':'قطع','unknown':'نامشخص'}[ts],f'open:tunnel:{ident}'))
         elif page == 'tunnel':
             endpoints=groups.get(selected)
             if not endpoints:raise PanelError('تونل انتخاب‌شده پیدا نشد.')
             state.update({'title':'تونل '+selected,'summary':f'{len(endpoints)} سمت','rows':[]})
             for sid,item in endpoints.items():
-                meta=item.get('metadata',{});health=item.get('health',{});live=item.get('live',{});ts=health.get('state','unknown');ip=meta.get('tun_local') or health.get('interface_local_ip') or '—';peer=meta.get('tun_remote') or health.get('interface_peer_ip') or '—'
+                meta=item.get('metadata',{});health=item.get('health',{});live=item.get('live',{});ts=health.get('state','unknown');ip=health.get('interface_local_ip') or meta.get('tun_local') or '—';peer=health.get('interface_peer_ip') or meta.get('tun_remote') or '—'
                 state['rows'].append(row(sid,[str(meta.get('transport') or item.get('kind') or 'تونل'),f'IP داخلی {ip} ⇄ {peer}',f'پینگ {health.get("rtt_ms","—")} ms · MTU {meta.get("mtu") or meta.get("tun_mtu") or "—"}'+(' · سرویس خاموش' if live.get('active') is False else '')],ts,{'up':'برقرار','down':'قطع','error':'خطا','monitor-only':'پایش محدود'}.get(ts,'نامشخص')))
             state['actions']=[{'label':'بررسی دوباره','query':f'refresh:tunnel:0:local:{selected}'}]
             if role=='admin' and len(endpoints)>=2:
@@ -727,7 +741,7 @@ class Bot:
             state.update({'title':'گزارش ۲۴ ساعت','rows':[row('شبکه',[f'{sum(x.get("reachable") is True for x in snapshot.get("statuses",[]))} سرور آنلاین · {sum(tunnel_state(v)=="up" for v in groups.values())} تونل برقرار',f'{len(incidents)} اختلال ثبت‌شده · مجموع {duration(total)}',f'{failures} عملیات ناموفق یا ناقص'])]})
         elif page == 'audit':
             if role!='admin':raise PanelError('فهرست عملیات فقط برای مدیر فعال است.')
-            rows=self.state.connection.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 12').fetchall();state.update({'title':'عملیات اخیر','rows':[row(dt.datetime.fromtimestamp(x['at'],self.zone).strftime('%m/%d %H:%M')+' · '+x['action'],[str(x['target'])[:70],str(x['result'])[:30]]) for x in rows]})
+            rows=pages(self.state.connection.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 80').fetchall(),page_index,'عملیات اخیر');state.update({'title':'عملیات اخیر','rows':[row(dt.datetime.fromtimestamp(x['at'],self.zone).strftime('%m/%d %H:%M')+' · '+x['action'],[str(x['target'])[:70],str(x['result'])[:30]]) for x in rows]})
         elif page == 'update':
             if role!='admin':raise PanelError('به‌روزرسانی فقط برای مدیر فعال است.')
             status=self.panel.updates();state.update({'title':'به‌روزرسانی avaTUN','summary':str(status.get('state','—')),'update_available':bool(status.get('update_available')),'latest_commit':status.get('latest_commit'),'latest_version':status.get('latest_version'),'rows':[row('نسخهٔ پنل',[f'فعلی {status.get("current_version","—")} · GitHub {status.get("latest_version","—")}',str(status.get('error') or ('نسخهٔ جدید موجود است' if status.get('update_available') else 'به‌روز است'))])], 'actions':[{'label':'بررسی دوباره','query':'update-check'}]})
@@ -737,44 +751,8 @@ class Bot:
         return state
 
     def widget_fallback(self, user_id, state):
-        lines = [f"avaTUN · {state.get('title', 'مرکز کنترل')}"]
-        if state.get('summary'):
-            lines.append(str(state['summary']))
-        for item in state.get('rows', []):
-            lines.append('')
-            lines.append(str(item.get('title', '')))
-            lines.extend('  ' + str(line) for line in item.get('lines', []))
-            if item.get('badge'):
-                lines.append('  وضعیت: ' + str(item['badge']))
-        if state.get('message'):
-            lines.extend(['', str(state['message'])])
-        context = {'page':state.get('page','overview'),'page_index':int(state.get('p',0)),
-                   'server_id':state.get('server_id','all'),'selected':state.get('selected','')}
-        keyboard = []
-        for item in state.get('rows', []):
-            if item.get('query'):
-                keyboard.append([self.button(user_id, item.get('button') or 'جزئیات',
-                    'widget-fallback-query', query=item['query'], context=context)])
-        actions = [self.button(user_id, item.get('label','بازکردن'), 'widget-fallback-query',
-                               query=item['query'], context=context) for item in state.get('actions', [])]
-        keyboard.extend([actions[i:i+2] for i in range(0, len(actions), 2)])
-        tabs = [('overview','نمای کلی'),('servers','سرورها'),('tunnels','تونل‌ها'),('resources','منابع'),('report','گزارش')]
-        if self.users.get(user_id)=='admin':
-            tabs += [('forwards','فوروارد'),('audit','عملیات'),('update','نسخه')]
-        keyboard.extend([[self.button(user_id,label,'widget-fallback-query',query='nav:'+page,
-                                      context={'page':page,'page_index':0,'server_id':'local' if page=='forwards' else 'all','selected':''})
-                          for page,label in tabs[i:i+2]] for i in range(0,len(tabs),2)])
-        if int(state.get('n',1)) > 1:
-            paging=[]
-            if int(state.get('p',0))>0:
-                paging.append(self.button(user_id,'قبلی','widget-fallback-query',
-                    query=f"page:{state.get('page')}:{int(state.get('p',0))-1}",context=context))
-            if int(state.get('p',0))+1<int(state.get('n',1)):
-                paging.append(self.button(user_id,'بعدی','widget-fallback-query',
-                    query=f"page:{state.get('page')}:{int(state.get('p',0))+1}",context=context))
-            if paging:keyboard.append(paging)
-        keyboard.append([self.button(user_id,'تلاش دوباره برای ویجت','widget-retry')])
-        self.send(user_id,'\n'.join(lines),keyboard)
+        text, keyboard = render(state, lambda label, action, **payload:self.button(user_id,label,action,**payload))
+        self.present(user_id,text,keyboard,html=True,screen=context(state))
 
     def fallback_confirm(self, user_id, text, operation, context):
         self.send(user_id, text, [[self.button(user_id,'✅ تأیید و اجرا','widget-fallback-execute',
@@ -1176,19 +1154,19 @@ class Bot:
             logging.warning('Widget query response failed (%s)', type(error).__name__)
 
     def forwards(self, user_id, page=0, server_id='local'):
-        return self.show_control_widget(user_id, 'forwards', page, server_id)
+        return self.show_screen(user_id, 'forwards', page, server_id)
 
     def forward(self, user_id, rule_id, server_id):
-        return self.show_control_widget(user_id, 'forward', server_id=server_id, selected=rule_id)
+        return self.show_screen(user_id, 'forward', server_id=server_id, selected=rule_id)
 
     def prompt(self, user_id, text):
-        self.telegram.request('sendMessage', {'chat_id': user_id, 'text': self.scrub(text),
-                                               'reply_markup': {'force_reply': True, 'selective': True}})
+        self.send(user_id,text+'\n\nپاسخ را در همین چت بفرست. برای خروج /cancel را بزن.')
 
     def wizard_key(self, user_id):
         return 'forward-wizard:' + str(user_id)
 
     def wizard_save(self, user_id, draft):
+        draft['revision'] = secrets.token_hex(6)
         self.state.put(self.wizard_key(user_id), draft)
 
     def wizard_get(self, user_id):
@@ -1198,6 +1176,8 @@ class Bot:
         self.state.put(self.wizard_key(user_id), None)
 
     def start_forward_wizard(self, user_id, server_id, rule=None):
+        if (self.state.get('console-job:'+str(user_id)) or {}).get('state')=='running':
+            return self.show_screen(user_id,'job',message='ابتدا منتظر پایان عملیات جاری بمان.')
         draft = {'server_id': server_id, 'action': 'update' if rule else 'create',
                  'enabled': rule.get('enabled', True) if rule else True,
                  'id': rule.get('id', '') if rule else '',
@@ -1239,7 +1219,7 @@ class Bot:
                        [self.button(user_id, 'ادامهٔ انتخاب مسیرها ←', 'wizard-step', step='backends')]])
         elif field == 'backends':
             result = self.panel.request('/api/v1/telegram/snapshot')
-            available = [x for x in result.get('tunnels', []) if x.get('server_id', 'local') == draft['server_id'] and x.get('metadata', {}).get('tun_remote') and x.get('metadata', {}).get('transport') != 'erspan']
+            available = [x for x in result.get('tunnels', []) if x.get('server_id', 'local') == draft['server_id'] and (x.get('health',{}).get('interface_peer_ip') or x.get('metadata', {}).get('tun_remote')) and x.get('metadata', {}).get('transport') != 'erspan']
             selected = {x['tunnel_id']: x for x in draft['backends']}
             rows = []
             for item in available[:40]:
@@ -1269,7 +1249,7 @@ class Bot:
         draft = self.wizard_get(user_id)
         if not draft or draft.get('step') not in ('id', 'listen_ip', 'listen_port', 'backend_port'):
             return False
-        field = draft['step']; value = text.strip()
+        field = draft['step']; value = digits(text.strip())
         if value == '.' and draft['action'] == 'update':
             value = str(draft.get(field, ''))
         if field == 'id' and not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,47}', value):
@@ -1294,12 +1274,26 @@ class Bot:
         return True
 
     def report(self, user_id):
-        return self.show_control_widget(user_id, 'report')
+        return self.show_screen(user_id, 'report')
 
     def audit(self, user_id):
-        return self.show_control_widget(user_id, 'audit')
+        return self.show_screen(user_id, 'audit')
 
     def dispatch(self, user_id, action, payload):
+        if action=='cancel':
+            self.wizard_clear(user_id)
+            return self.show_screen(user_id,'overview',message='فرم جاری لغو شد.')
+        if action=='navigate':
+            if payload.get('query','').startswith('nav:'):self.wizard_clear(user_id)
+            return self.navigate(user_id,payload.get('query',''),payload.get('context'))
+        if action=='run-operation':
+            return self.start_operation(user_id,payload.get('operation') or {},payload.get('context'))
+        if action=='open-widget':
+            return self.navigate(user_id,'try-widget')
+        if action.startswith('wizard-') and payload.get('wizard_revision') is not None:
+            draft=self.wizard_get(user_id)
+            if not draft or payload['wizard_revision']!=draft.get('revision'):
+                raise PanelError('این مرحله تغییر کرده است؛ از دکمه‌های فرم فعلی استفاده کن.')
         admin_actions = {'confirm-tunnel', 'confirm-forward', 'execute-tunnel', 'execute-forward', 'forward',
                          'confirm-forward-delete', 'execute-forward-delete', 'audit', 'haproxy-widget',
                          'forward-new', 'forward-start', 'forward-edit', 'wizard-set', 'wizard-toggle', 'wizard-step',
@@ -1309,10 +1303,10 @@ class Bot:
         if action in admin_actions and self.users.get(user_id) != 'admin':
             raise PanelError('این عملیات فقط برای مدیر فعال است.')
         if action=='widget-fallback-query':
-            self.widget_fallback_query(user_id,payload.get('query',''),payload.get('context'))
+            self.navigate(user_id,payload.get('query',''),payload.get('context'))
             return
         if action=='widget-fallback-execute':
-            self.execute_widget_fallback(user_id,payload.get('operation') or {},payload.get('context'))
+            self.start_operation(user_id,payload.get('operation') or {},payload.get('context'))
             return
         if action=='widget-retry':
             self.state.put(self.widget_delivery_key(user_id), {'retry_at':0})
@@ -1320,32 +1314,21 @@ class Bot:
             return
         widget_pages={'home':'overview','status':'overview','servers':'servers','servers-text':'servers',
                       'tunnels':'tunnels','tunnel-widget':'tunnels','hardware':'resources',
-                      'forwards':'forwards','report':'report','audit':'audit'}
+                      'forwards':'forward_servers','report':'report','audit':'audit','settings':'settings','help':'help'}
         if action in widget_pages:
-            self.show_control_widget(user_id,widget_pages[action],server_id=payload.get('server_id','all' if action in ('tunnels','tunnel-widget','hardware') else 'local'))
+            page='forwards' if action=='forwards' and payload.get('server_id') else widget_pages[action]
+            self.show_screen(user_id,page,server_id=payload.get('server_id','all'))
             return
         if action in ('server','tunnel','diagnose','forward'):
             page={'server':'server','tunnel':'tunnel','diagnose':'tunnel','forward':'forward'}[action]
             selected=payload.get('server_id') if action=='server' else payload.get('tunnel_id') if action in ('tunnel','diagnose') else payload.get('rule_id')
-            self.show_control_widget(user_id,page,server_id=payload.get('server_id','local'),selected=selected or '')
+            self.show_screen(user_id,page,server_id=payload.get('server_id','local'),selected=selected or '')
             return
         if action=='update-check':
             self.panel.request('/api/v1/updates',{'action':'check'},timeout=8)
-            self.show_control_widget(user_id,'update')
+            self.show_screen(user_id,'update',message='درخواست بررسی GitHub ثبت شد؛ چند لحظه بعد تازه‌سازی را بزن.')
             return
-        if action == 'update-check':
-            status = self.panel.check_updates()
-            if status.get('update_available'):
-                self.send(user_id, f"نسخهٔ جدید avaTUN پیدا شد: {status.get('current_version')} → {status.get('latest_version')}\nبرای نصب، دکمهٔ نصب را بزن.",
-                          [[self.button(user_id, '⬆️ نصب نسخهٔ جدید', 'execute-app-update', commit=status.get('latest_commit'))],
-                           [self.button(user_id, 'لغو', 'home')]])
-            elif status.get('state') == 'installing':
-                self.send(user_id, 'به‌روزرسانی avaTUN در حال اجراست.')
-            elif status.get('state') == 'error':
-                self.send(user_id, 'بررسی GitHub انجام نشد: ' + str(status.get('error') or 'خطای نامشخص')[:300])
-            else:
-                self.send(user_id, 'avaTUN به‌روز است · نسخهٔ ' + str(status.get('current_version', '—')))
-        elif action == 'confirm-app-update':
+        if action == 'confirm-app-update':
             status = self.panel.updates()
             if not status.get('update_available') or (payload.get('commit') and payload.get('commit') != status.get('latest_commit')):
                 self.send(user_id, 'وضعیت نسخه عوض شده است؛ دوباره /update را بفرست.')
@@ -1477,17 +1460,9 @@ class Bot:
             data = {key: draft[key] for key in ('action', 'server_id', 'id', 'listen_ip', 'listen_port',
                     'backend_port', 'algorithm', 'proxy_protocol', 'check_send_proxy', 'shutdown_sessions',
                     'backends', 'enabled')}
-            self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'started')
-            try:
-                self.panel.request('/api/v1/forwards', data)
-                self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'ok')
-                self.wizard_clear(user_id)
-                self.send(user_id, 'قانون ذخیره و روی سرور اعمال شد.',
-                          [[self.button(user_id, 'مشاهدهٔ قانون', 'forward', rule_id=data['id'], server_id=data['server_id'])],
-                           [self.button(user_id, 'قوانین فورواردر', 'forwards', server_id=data['server_id'])]])
-            except Exception:
-                self.state.audit(user_id, 'forward-' + data['action'], data['id'], 'failed')
-                raise
+            self.wizard_save(user_id,{**draft,'step':'submitting'})
+            self.start_operation(user_id,{'kind':'forward-save','target':data['id'],
+                'server_id':data['server_id'],'data':data})
         elif action == 'wizard-cancel':
             self.wizard_clear(user_id); self.send(user_id, 'ویرایش قانون لغو شد.', [[self.button(user_id, 'فورواردر', 'forwards')]])
         else:
@@ -1530,24 +1505,35 @@ class Bot:
         try:
             if query:
                 token = query.get('data', '')
-                entry = self.callbacks.get(token)
+                entry = self.callbacks.get(token) or self.state.get('callback:'+token)
                 if not entry or entry['user'] != sender or entry['expires'] <= time.time():
                     self.send(sender, 'این دکمه منقضی شده است؛ /start را بفرست.')
                     return
-                if entry['action'].startswith('execute-') or entry['action']=='widget-fallback-execute':
-                    del self.callbacks[token]
+                if entry.get('once') or entry['action'].startswith('execute-') or entry['action']=='widget-fallback-execute':
+                    with self.state.connection:
+                        removed=self.state.connection.execute('DELETE FROM meta WHERE key=?',('callback:'+token,)).rowcount
+                    self.callbacks.pop(token,None)
+                    if not removed:
+                        self.send(sender,'این درخواست قبلاً ثبت شده است؛ وضعیت عملیات را بررسی کن.')
+                        return
                 self.dispatch(sender, entry['action'], entry['payload'])
             else:
                 text = message.get('text', '').strip()
-                if self.users.get(sender) == 'admin' and self.wizard_text(sender, text):
-                    return
                 command = text.split()[0].split('@')[0] if text else ''
-                actions = {'/start': 'home', '/help': 'home', '/status': 'status', '/servers': 'servers',
+                if not text.startswith('/') and self.users.get(sender) == 'admin' and self.wizard_text(sender, text):
+                    return
+                actions = {'/start': 'home', '/help': 'help', '/cancel':'cancel', '/status': 'status', '/servers': 'servers',
                            '/tunnels': 'tunnel-widget', '/tunnel-list': 'tunnels', '/tunnel_list': 'tunnels',
                            '/hardware': 'hardware', '/forwards': 'forwards',
                            '/haproxy': 'forwards',
-                           '/report': 'report', '/audit': 'audit', '/update': 'update-check'}
-                self.dispatch(sender, actions.get(command, 'home'), {})
+                           '/report': 'report', '/audit': 'audit', '/update': 'update-check',
+                           '/settings':'settings', '/widgets':'open-widget'}
+                if command=='/start':
+                    self.wizard_clear(sender)
+                    self.state.put('console:'+str(sender),None)
+                if command not in actions:
+                    self.show_screen(sender,'help',message='از دکمه‌های زیر استفاده کن یا /start را بفرست.')
+                else:self.dispatch(sender, actions[command], {})
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             self.send(sender, '⚠️ عملیات کامل نشد.\n' + self.scrub(str(error))[:600])
 
@@ -1601,6 +1587,13 @@ class Bot:
 
     def run(self):
         self.set_status('starting')
+        # A process restart cannot prove whether an in-flight mutation completed.
+        # Report it for review instead of replaying it.
+        for user_id in self.users:
+            key='console-job:'+str(user_id);job=self.state.get(key) or {}
+            if job.get('state')=='running':
+                job.update(state='interrupted',message='ربات هنگام عملیات دوباره راه‌اندازی شد. وضعیت مقصد را بررسی کن؛ درخواست خودکار تکرار نشد.')
+                self.state.put(key,job)
         self.telegram.request('getMe', {})
         if self.telegram.request('getWebhookInfo', {}).get('url'):
             raise RuntimeError('Polling requires removing the existing webhook first')
@@ -1609,11 +1602,17 @@ class Bot:
             {'command': 'status', 'description': 'نمای کلی شبکه'},
             {'command': 'servers', 'description': 'فهرست سرورها'},
             {'command': 'tunnels', 'description': 'وضعیت زندهٔ تونل‌ها'},
-            {'command': 'tunnel_list', 'description': 'فهرست متنی تونل‌ها'},
             {'command': 'hardware', 'description': 'منابع و آپلود/دانلود'},
-            {'command': 'forwards', 'description': 'قوانین فورواردر'},
-            {'command': 'haproxy', 'description': 'مدیریت فورواردر'},
-            {'command': 'report', 'description': 'گزارش ۲۴ ساعت'}]})
+            {'command': 'report', 'description': 'گزارش 24 ساعت'},
+            {'command': 'help', 'description': 'راهنمای ربات'},
+            {'command': 'cancel', 'description': 'لغو فرم جاری'}]})
+        for user_id,role in self.users.items():
+            if role=='admin':
+                self.telegram.request('setMyCommands',{'scope':{'type':'chat','chat_id':user_id},'commands':[
+                    {'command':name,'description':label} for name,label in (
+                    ('start','خانه'),('servers','سرورها'),('tunnels','تونل‌ها'),('hardware','منابع'),
+                    ('forwards','فوروارد'),('report','گزارش 24 ساعت'),('update','به‌روزرسانی پنل'),
+                    ('audit','عملیات اخیر'),('settings','تنظیمات و راهنما'),('cancel','لغو فرم جاری'))]})
         self.set_status('ready')
         next_monitor = 0
         while True:
@@ -1629,7 +1628,7 @@ class Bot:
                 if now >= next_monitor:
                     self.monitor(now)
                     next_monitor = time.time() + 20
-                self.state.deliver(self.telegram, self.scrub)
+                self.state.deliver(self.telegram, lambda text:digits(self.scrub(text)))
             except (OSError, ValueError, KeyError, RuntimeError) as error:
                 self.set_status('retrying', type(error).__name__)
                 logging.warning('Bot cycle failed (%s: %s)', type(error).__name__, str(error)[:240])

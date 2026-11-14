@@ -1,3 +1,10 @@
+## avaTUN 0.2.12
+
+- Redesign the Telegram bot around native, single-message screens: a compact home, named server/tunnel selectors, scoped details, pagination, timestamps, and consistent back/home/refresh controls.
+- Add dedicated server selection for HAProxy, guided forms with cancellation and stale-step protection, escaped HTML display, and automatic conversion of decimal digits to ASCII.
+- Persist user-bound callback buttons across restarts and consume operational confirmations atomically. Run confirmed operations in background workers, report partial results, and never replay interrupted mutations.
+- Keep HTML widgets as an explicit experiment under settings instead of attempting them during normal navigation. Preserve monitoring, daily reports, GitHub update notifications, and viewer/admin authorization.
+
 ## avaTUN 0.2.11
 
 - Replace the permanent global Telegram widget disable flag with a five-minute retry cooldown scoped to each bot token and private chat. Show the actual delivery rejection in the fallback menu and retain manual retry.

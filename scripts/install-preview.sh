@@ -204,6 +204,8 @@ install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets
 install -d -o root -g root -m 0755 /opt/tunnelmgr/packaging/systemd
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnelctl.py" /opt/tunnelmgr/tunnelmgr/tunnelctl.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_bot.py" /opt/tunnelmgr/tunnelmgr/telegram_bot.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_console.py" /opt/tunnelmgr/tunnelmgr/telegram_console.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_ui.py" /opt/tunnelmgr/tunnelmgr/telegram_ui.py
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-telegram.service" /etc/systemd/system/avatun-telegram.service
 install -d -o root -g tunnelmgr -m 0750 /etc/avatun
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/openconnect_runner.py" /opt/tunnelmgr/tunnelmgr/openconnect_runner.py
