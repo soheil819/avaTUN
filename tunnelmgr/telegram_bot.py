@@ -5,6 +5,7 @@ import datetime as dt
 import http.client
 import fcntl
 import http.cookiejar
+import hashlib
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from zoneinfo import ZoneInfo
 
 
@@ -612,10 +614,26 @@ class Bot:
         return self.show_control_widget(user_id, 'resources')
 
     def widget(self, user_id, html, state, caption):
+        source = html.encode('utf-8')
+        if not source or len(source) > 32768 or len(zlib.compress(source, 9)) > 4096:
+            raise ValueError('Widget HTML exceeds Telegram size limits.')
         return self.telegram.request('sendWidget', {
             'chat_id': user_id, 'html': html,
             'chat_data': widget_chat_data(state),
-            'caption': caption, 'allow_queries': True})
+            'caption': caption, 'allow_queries': True, 'protect_content': True})
+
+    def widget_delivery_key(self, user_id):
+        # A denied chat or a previous bot token must not disable every user.
+        identity = hashlib.sha256(self.config['bot_token'].encode()).hexdigest()[:16]
+        return f'widget-delivery:{identity}:{user_id}'
+
+    def widget_delivery_fallback(self, user_id, state):
+        state = dict(state)
+        notice = ('تلگرام ارسال ویجت را رد کرده است (INPUT_MEDIA_WIDGET_NOT_ALLOWED). '
+                  'فعلاً منوی دکمه‌ای نمایش داده می‌شود. پس از 5 دقیقه، با بازکردن دوبارهٔ منو '
+                  'ارسال ویجت دوباره امتحان می‌شود؛ دکمهٔ زیر همین حالا تلاش می‌کند.')
+        state['message'] = '\n'.join(filter(None, [state.get('message'), notice]))
+        self.widget_fallback(user_id, state)
 
     def control_widget_state(self, user_id, page='overview', page_index=0, server_id='all', selected=''):
         role = self.users.get(user_id, 'viewer')
@@ -640,7 +658,7 @@ class Bot:
             online=sum(x.get('reachable') is True for x in snapshot.get('statuses', []));up=sum(tunnel_state(x)=='up' for x in groups.values());down=sum(tunnel_state(x)=='down' for x in groups.values())
             version=next((str(x.get('app_version')) for x in snapshot.get('statuses',[]) if x.get('id')=='local'),'—')
             state.update({'title':'avaTUN · مرکز کنترل','summary':version,'rows':[row('وضعیت شبکه',[f'سرورهای آنلاین {online} از {len(servers)}',f'تونل‌های برقرار {up} از {len(groups)} · قطع {down} · نامشخص {max(0,len(groups)-up-down)}'])],
-                          'actions':[{'label':'↻ تازه‌سازی','query':'refresh:overview:0:local:'}]})
+                          'actions':[{'label':'↻ تازه‌سازی','query':'refresh'}]})
             if role=='admin':state['actions'].append({'label':'بررسی نسخهٔ جدید','query':'nav:update'})
         elif page == 'servers':
             entries=pages(servers,page_index,'سرورها')
@@ -740,7 +758,7 @@ class Bot:
         actions = [self.button(user_id, item.get('label','بازکردن'), 'widget-fallback-query',
                                query=item['query'], context=context) for item in state.get('actions', [])]
         keyboard.extend([actions[i:i+2] for i in range(0, len(actions), 2)])
-        tabs = [('overview','نمای کلی'),('servers','سرورها'),('tunnels','تونل‌ها'),('resources','منابع')]
+        tabs = [('overview','نمای کلی'),('servers','سرورها'),('tunnels','تونل‌ها'),('resources','منابع'),('report','گزارش')]
         if self.users.get(user_id)=='admin':
             tabs += [('forwards','فوروارد'),('audit','عملیات'),('update','نسخه')]
         keyboard.extend([[self.button(user_id,label,'widget-fallback-query',query='nav:'+page,
@@ -762,7 +780,7 @@ class Bot:
         self.send(user_id, text, [[self.button(user_id,'✅ تأیید و اجرا','widget-fallback-execute',
                                                operation=operation,context=context),
                                    self.button(user_id,'لغو','widget-fallback-query',
-                                               query='nav:'+context.get('page','overview'),context=context)]])
+                                               query='refresh',context=context)]])
 
     def widget_fallback_query(self, user_id, data, context=None):
         context=context or {'page':'overview','page_index':0,'server_id':'all','selected':''}
@@ -861,11 +879,16 @@ class Bot:
 
     def show_control_widget(self, user_id, page='overview', page_index=0, server_id='all', selected=''):
         state=self.control_widget_state(user_id,page,page_index,server_id,selected)
-        if self.state.get('telegram-widget-disabled',False):
-            self.widget_fallback(user_id,state)
+        delivery_key = self.widget_delivery_key(user_id)
+        delivery = self.state.get(delivery_key) or {}
+        if delivery.get('retry_at', 0) > time.time():
+            self.widget_delivery_fallback(user_id,state)
             return
+        # Telegram cannot replace the HTML of an existing widget. Send a new
+        # message after a layout upgrade instead of editing the old widget's data.
+        layout = hashlib.sha256(CONTROL_WIDGET_HTML.encode()).hexdigest()
         storage_key='control-widget:'+str(user_id);saved=self.state.get(storage_key)
-        if saved and saved.get('chat_id')==user_id and saved.get('message_id'):
+        if saved and saved.get('chat_id')==user_id and saved.get('message_id') and saved.get('layout')==layout:
             try:
                 self.telegram.request('editMessageWidgetData',{'chat_id':user_id,'message_id':int(saved['message_id']),
                     'chat_data':widget_chat_data(state)})
@@ -882,13 +905,15 @@ class Bot:
             result=self.widget(user_id,CONTROL_WIDGET_HTML,state,'avaTUN · '+state.get('title','مرکز کنترل'))
         except RuntimeError as error:
             if 'INPUT_MEDIA_WIDGET_NOT_ALLOWED' not in str(error):raise
-            logging.warning('Telegram has not enabled HTML widgets for this bot; using inline keyboard fallback.')
-            self.state.put('telegram-widget-disabled',True)
-            self.widget_fallback(user_id,state)
+            logging.warning('Telegram rejected sendWidget with INPUT_MEDIA_WIDGET_NOT_ALLOWED; retry after 300 seconds.')
+            self.state.put(delivery_key, {'error':'INPUT_MEDIA_WIDGET_NOT_ALLOWED',
+                                         'retry_at':time.time()+300})
+            self.widget_delivery_fallback(user_id,state)
             return
+        self.state.put(delivery_key, {'retry_at':0})
         message_id=(result or {}).get('message_id');chat_id=((result or {}).get('chat') or {}).get('id',user_id)
         if message_id:
-            self.state.put(storage_key,{'chat_id':chat_id,'message_id':int(message_id)})
+            self.state.put(storage_key,{'chat_id':chat_id,'message_id':int(message_id),'layout':layout})
             self.widget_views[(user_id,chat_id,int(message_id))]={**state,'expires':time.time()+1800}
             self.state.put(f'control-view:{user_id}:{int(message_id)}',{**state,'expires':time.time()+1800})
 
@@ -1021,7 +1046,7 @@ class Bot:
                 with self.widget_confirmation_lock:self.widget_confirmations[key]={'nonce':nonce,'operation':operation,'expires':time.time()+180}
                 label=f'قانون {ident} روی {server_id} حذف شود؟' if action=='delete' else f'وضعیت قانون {ident} روی {server_id} تغییر کند؟'
                 state={'page':'confirm','role':role,'server_id':server_id,'selected':ident,'title':'تأیید فورواردر','summary':'','rows':[{'title':label,'lines':['این تغییر روی HAProxy اعمال می‌شود.']}],
-                       'actions':[{'label':'✅ تأیید و اجرا','query':'execute:'+nonce},{'label':'لغو','query':'open:forward:'+ident}]}
+                       'actions':[{'label':'✅ تأیید و اجرا','query':'execute:'+nonce},{'label':'لغو','query':'open:forward:'+server_id+':'+ident}]}
             elif data.startswith('forward-new:'):
                 if role!='admin':raise PanelError('این عملیات فقط برای مدیر فعال است.')
                 server_id=data.split(':',1)[1]
@@ -1087,7 +1112,7 @@ class Bot:
                 raise PanelError('دستور ویجت نامعتبر است.')
             self.answer_widget(query,state)
         except (OSError,ValueError,KeyError,RuntimeError,TypeError) as error:
-            self.answer_widget(query,{'page':'overview','role':role,'title':'خطا','summary':'','rows':[],'actions':[{'label':'بازخوانی','query':'page:overview:0:local:'}],'message':self.scrub(error)[:180]})
+            self.answer_widget(query,{'page':'overview','role':role,'title':'خطا','summary':'','rows':[],'actions':[{'label':'بازخوانی','query':'nav:overview'}],'message':self.scrub(error)[:180]})
 
     def tunnel_widget(self, user_id):
         return self.show_control_widget(user_id, 'tunnels', server_id='all')
@@ -1290,7 +1315,7 @@ class Bot:
             self.execute_widget_fallback(user_id,payload.get('operation') or {},payload.get('context'))
             return
         if action=='widget-retry':
-            self.state.put('telegram-widget-disabled',False)
+            self.state.put(self.widget_delivery_key(user_id), {'retry_at':0})
             self.show_control_widget(user_id,'overview')
             return
         widget_pages={'home':'overview','status':'overview','servers':'servers','servers-text':'servers',
@@ -1509,7 +1534,7 @@ class Bot:
                 if not entry or entry['user'] != sender or entry['expires'] <= time.time():
                     self.send(sender, 'این دکمه منقضی شده است؛ /start را بفرست.')
                     return
-                if entry['action'].startswith('execute-'):
+                if entry['action'].startswith('execute-') or entry['action']=='widget-fallback-execute':
                     del self.callbacks[token]
                 self.dispatch(sender, entry['action'], entry['payload'])
             else:

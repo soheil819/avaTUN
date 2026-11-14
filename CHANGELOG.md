@@ -1,3 +1,10 @@
+## avaTUN 0.2.11
+
+- Replace the permanent global Telegram widget disable flag with a five-minute retry cooldown scoped to each bot token and private chat. Show the actual delivery rejection in the fallback menu and retain manual retry.
+- Send a fresh widget when its HTML layout changes, and check both HTML byte and compressed-size limits before delivery.
+- Consume fallback operation confirmations once; repair overview refresh and forward cancellation routes, and restore report navigation in the fallback menu.
+- Add regression coverage for widget delivery, cooldown expiry, user isolation, layout upgrades, and fallback confirmations. Telegram may still reject widget delivery with `INPUT_MEDIA_WIDGET_NOT_ALLOWED`; these changes do not grant Telegram-side permissions.
+
 ## avaTUN 0.2.10
 
 - Gracefully handle Telegram rejecting HTML widgets for this bot and keep `/start` usable with an inline-keyboard interface.

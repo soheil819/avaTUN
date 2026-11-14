@@ -87,4 +87,18 @@ exceptions are logged by type only.
 
 Run the regression checks with `python3 scripts/check-telegram.py`.
 
+### HTML widget delivery
+
+The bot calls the official `sendWidget` method in each allowed user's private
+chat. It checks the HTML and compressed payload limits before sending. Layout
+changes create a new widget because Telegram can only edit an existing widget's
+data, not its HTML.
+
+If Telegram replies `INPUT_MEDIA_WIDGET_NOT_ALLOWED`, the bot shows that reason
+with an inline-keyboard menu. The rejection delays retries for five minutes for
+that bot token and user only. The next menu request after the delay tries a
+widget again; **تلاش دوباره برای ویجت** retries immediately. The legacy global
+disable flag is ignored. This fallback does not mean widget delivery succeeded,
+and changing the panel code cannot grant Telegram-side sending permissions.
+
 Telegram API reference: https://core.telegram.org/bots/api
