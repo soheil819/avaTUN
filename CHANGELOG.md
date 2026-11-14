@@ -1,3 +1,7 @@
+## avaTUN 0.2.31 · پردازش پیام‌های webhook
+
+- Process webhook updates on the bot's main thread so its SQLite state is accessed safely.
+
 ## avaTUN 0.2.30 · دریافت پیام با webhook
 
 - Use the domain entered in panel TLS settings to configure a secured Telegram webhook on port 8443. The bot switches automatically after the certificate is issued or renewed; before TLS is ready, polling remains active.

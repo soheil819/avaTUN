@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import pathlib
+import queue
 import re
 import secrets
 import sqlite3
@@ -1603,7 +1604,7 @@ class Bot(ResourceMixin, ConsoleMixin):
             raise ValueError('webhook_url must include a non-root path')
 
         bot = self
-        update_lock = threading.Lock()
+        bot.webhook_updates = queue.Queue()
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 if self.path != route:
@@ -1620,8 +1621,13 @@ class Bot(ResourceMixin, ConsoleMixin):
                     update = json.loads(self.rfile.read(length))
                     if not isinstance(update, dict) or not isinstance(update.get('update_id'), int):
                         raise ValueError('invalid Telegram update')
-                    with update_lock:
-                        bot.handle_update(update)
+                    result = {'ok': False}
+                    completed = threading.Event()
+                    bot.webhook_updates.put((update, completed, result))
+                    if not completed.wait(120):
+                        raise TimeoutError('update processing timed out')
+                    if not result['ok']:
+                        raise RuntimeError('update processing failed')
                     body = b'{"ok":true}'
                     self.send_response(200)
                 except (OSError, ValueError, KeyError, RuntimeError, TypeError) as error:
@@ -1691,7 +1697,18 @@ class Bot(ResourceMixin, ConsoleMixin):
                 # hold up an already waiting user command.
                 if webhook_mode:
                     self.set_status('ready')
-                    time.sleep(5)
+                    try:
+                        update, completed, result = self.webhook_updates.get(timeout=5)
+                    except queue.Empty:
+                        pass
+                    else:
+                        try:
+                            self.handle_update(update)
+                            result['ok'] = True
+                        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as error:
+                            logging.warning('Webhook update failed (%s)', type(error).__name__)
+                        finally:
+                            completed.set()
                 else:
                     updates = self.telegram.request('getUpdates', {'offset': self.state.get('offset', 0),
                         'timeout': 5, 'limit': 20, 'allowed_updates': ['message', 'callback_query', 'widget_query']})
