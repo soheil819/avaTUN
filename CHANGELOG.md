@@ -1,3 +1,8 @@
+## avaTUN 0.2.25 · beta19 · نخستین نسخهٔ آزمایش عملی
+
+- Add 12 selectable neon accent palettes to dashboard settings; the chosen palette is saved per browser and the default layout remains intact.
+- Carry forward the 0.2.24 IPsec peer-routing fix and the recent Backhaul, VXLAN/Geneve allocation, and mesh improvements into the practical test release.
+
 ## avaTUN 0.2.24
 
 - Install and remove table 220 inner-peer routes for managed IPsec profiles so unbound traffic selects the tunnel source address and matches XFRM policies.
