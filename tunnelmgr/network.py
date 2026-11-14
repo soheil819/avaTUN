@@ -369,6 +369,12 @@ def apply(profile, up, profile_name=None):
         service=subprocess.run(['/usr/bin/systemctl','enable','--now',unit],capture_output=True,text=True,timeout=30)
         if service.returncode:raise RuntimeError(f"Could not enable {unit}: {(service.stderr or service.stdout).strip() or 'systemctl failed'}")
         run_swanctl('--load-all')
+        # The kernel may retain strongSwan's table 220 routes after losing its
+        # rule; without the rule unbound traffic takes the public default route.
+        rules=subprocess.run(['/usr/sbin/ip','-4','rule','show'],capture_output=True,text=True,check=True)
+        if not any(line.split(':',1)[0].strip()=='220' and 'lookup 220' in line for line in rules.stdout.splitlines()):
+            if any(line.split(':',1)[0].strip()=='220' for line in rules.stdout.splitlines()):raise RuntimeError('Routing rule priority 220 is used by another table')
+            subprocess.run(['/usr/sbin/ip','-4','rule','add','pref','220','lookup','220'],check=True)
         subprocess.run(['/usr/sbin/ip','address','replace',str(local)+'/32','dev','lo'],check=True)
         if profile.get('role')=='client':run_swanctl('--initiate','--ike',safe,'--child',safe,timeout=45)
     elif kind=='esp':

@@ -39,7 +39,7 @@ def rebuild(t, ident, server_ids, configs=None, operation='restart'):
     with t.NATIVE_PAIR_LOCK:
         # Read and validate *all* endpoints before the first destructive call.
         previous={sid:call(sid,'config') for sid in server_ids}
-        if configs and all(configs[sid].get('transport')=='backhaul' and configs[sid].get('carrier')=='tun' and configs[sid].get('encapsulation','tcp')!='ipx' for sid in server_ids) and any(not configs[sid].get('tun_local') or not configs[sid].get('tun_remote') for sid in server_ids):
+        if configs and all(configs[sid].get('transport')=='backhaul' and configs[sid].get('carrier')=='tun' for sid in server_ids) and any(not configs[sid].get('tun_local') or not configs[sid].get('tun_remote') for sid in server_ids):
             interface,local,peer=t.allocate_pair_resources([t.allocation_snapshot(sid,servers) for sid in server_ids],prefix='bh')
             configs={sid:dict(configs[sid]) for sid in server_ids}
             configs[server_ids[0]].update(tun_name=interface,tun_local=local,tun_remote=peer)

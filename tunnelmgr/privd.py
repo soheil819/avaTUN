@@ -93,10 +93,17 @@ def tunnel_create(req,ident):
                 except OSError as e:raise ValueError(f'health port {health} is already in use; choose a unique port') from e
                 finally:probe.close()
         else:
-            if cfg.get('tun_local') or cfg.get('tun_remote'):raise ValueError('IPX mode uses outer IPs, not TUN peer addresses')
+            if bool(cfg.get('tun_local')) != bool(cfg.get('tun_remote')):raise ValueError('both IPX TUN addresses are required together')
+            if cfg.get('tun_local'):
+                inner=ipaddress.ip_interface(cfg['tun_local']);other=ipaddress.ip_interface(cfg['tun_remote'])
+                if inner.version!=4 or inner.network!=other.network or inner.ip==other.ip or not inner.ip.is_private or not other.ip.is_private:raise ValueError('invalid IPX inner address pair')
+                args += ['--tun-local',str(inner),'--tun-remote',str(other)]
             profile=cfg.get('ipx_profile','udp')
             if profile not in ('icmp','ipip','udp','tcp','gre','bip'):raise ValueError('unsupported IPX profile')
             local=ipaddress.IPv4Address(cfg.get('local_ip',''));remote=ipaddress.IPv4Address(cfg.get('peer_ip',''))
+            health=cfg.get('health_port',19080)
+            if type(health) is not int or not 1<=health<=65535:raise ValueError('invalid IPX health port')
+            args += ['--health-port',str(health)]
             args += ['--ipx-profile',profile,'--local-ip',str(local),'--peer-ip',str(remote),'--interface',safe(cfg.get('interface','eth0'),15,'interface')]
             for field,flag in (('spoof_source','--spoof-source'),('expected_peer_source','--expected-peer-source')):
                 if cfg.get(field):args += [flag,str(ipaddress.IPv4Address(cfg[field]))]

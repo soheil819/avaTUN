@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.15"
+APP_VERSION="0.2.16"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -202,6 +202,13 @@ def network_snapshot():
             net=ipaddress.ip_network(destination,strict=False)
             if net.version==4 and net.prefixlen>0:networks.add(str(net))
         except ValueError:continue
+    tcp_ports=set();tcp_inventory_ok=True
+    for filename in ('/proc/net/tcp','/proc/net/tcp6'):
+        try:
+            for line in pathlib.Path(filename).read_text().splitlines()[1:]:
+                columns=line.split()
+                if len(columns)>3 and columns[3]=='0A':tcp_ports.add(int(columns[1].rsplit(':',1)[1],16))
+        except OSError:tcp_inventory_ok=False
     udp_ports=set();udp_inventory_ok=True
     for filename in ('/proc/net/udp','/proc/net/udp6'):
         path=pathlib.Path(filename)
@@ -215,7 +222,7 @@ def network_snapshot():
     try:
         ephemeral_low,ephemeral_high=map(int,pathlib.Path('/proc/sys/net/ipv4/ip_local_port_range').read_text().split())
     except (OSError,ValueError):udp_inventory_ok=False
-    return {'interfaces':sorted(interfaces),'networks':sorted(networks),'udp_ports':sorted(udp_ports),
+    return {'interfaces':sorted(interfaces),'networks':sorted(networks),'udp_ports':sorted(udp_ports),'tcp_ports':sorted(tcp_ports),'tcp_inventory_ok':tcp_inventory_ok,
             'udp_ephemeral_range':[ephemeral_low,ephemeral_high],'udp_inventory_ok':udp_inventory_ok}
 
 def interface_ip_addresses(interface):
@@ -277,12 +284,13 @@ def iperf3_server_stop(pid):
     try:os.kill(int(pid),signal.SIGTERM)
     except ProcessLookupError:pass
 
-def iperf3_client(address,port,reverse=False):
+def iperf3_client(address,port,reverse=False,source=None):
     address=str(ipaddress.ip_address(address));port=int(port)
     binary=shutil.which('iperf3')
     if not binary:raise RuntimeError('iperf3 is not installed on this tunnel endpoint; update the server installer first')
     args=[binary,'-c',address,'-p',str(port),'-t','3','-O','1','--connect-timeout','3000','-J']
     if reverse:args.append('-R')
+    if source:args.extend(['-B',str(ipaddress.ip_address(source))])
     result=subprocess.run(args,capture_output=True,text=True,timeout=12)
     if result.returncode:raise RuntimeError((result.stderr or result.stdout or 'iperf3 client failed').strip()[-500:])
     try:report=json.loads(result.stdout);end=report['end'];received=end.get('sum_received') or end.get('sum') or {}
@@ -292,7 +300,7 @@ def iperf3_client(address,port,reverse=False):
     return round(bps/1_000_000,2)
 
 def remote_iperf3(server,payload):
-    code='''import json,ipaddress,os,shutil,signal,subprocess,sys,time\nd=json.load(sys.stdin);op=d.get("op");out={}\nif op=="start":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n if not 1024<=port<=65535:raise ValueError("iperf3 test port is outside the allowed range")\n child=subprocess.Popen([binary,"-s","-1","-B",addr,"-p",str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True);time.sleep(.2)\n if child.poll() is not None:raise RuntimeError("iperf3 could not start its temporary listener")\n out={"pid":child.pid}\nelif op=="stop":\n try:os.kill(int(d["pid"]),signal.SIGTERM)\n except ProcessLookupError:pass\n out={"ok":True}\nelif op=="client":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n args=[binary,"-c",addr,"-p",str(port),"-t","3","-O","1","--connect-timeout","3000","-J"]\n if d.get("reverse"):args.append("-R")\n result=subprocess.run(args,capture_output=True,text=True,timeout=12)\n if result.returncode:raise RuntimeError((result.stderr or result.stdout or "iperf3 client failed").strip()[-500:])\n report=json.loads(result.stdout);end=report["end"];received=end.get("sum_received") or end.get("sum") or {};bps=float(received.get("bits_per_second",0))\n if bps<=0:raise RuntimeError("iperf3 completed without reporting received throughput")\n out={"mbps":round(bps/1000000,2)}\nelse:raise ValueError("unsupported iperf3 operation")\nprint(json.dumps(out))'''
+    code='''import json,ipaddress,os,shutil,signal,subprocess,sys,time\nd=json.load(sys.stdin);op=d.get("op");out={}\nif op=="start":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n if not 1024<=port<=65535:raise ValueError("iperf3 test port is outside the allowed range")\n child=subprocess.Popen([binary,"-s","-1","-B",addr,"-p",str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True);time.sleep(.2)\n if child.poll() is not None:raise RuntimeError("iperf3 could not start its temporary listener")\n out={"pid":child.pid}\nelif op=="stop":\n try:os.kill(int(d["pid"]),signal.SIGTERM)\n except ProcessLookupError:pass\n out={"ok":True}\nelif op=="client":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n args=[binary,"-c",addr,"-p",str(port),"-t","3","-O","1","--connect-timeout","3000","-J"]\n if d.get("reverse"):args.append("-R")\n if d.get("source"):args.extend(["-B",str(ipaddress.ip_address(d["source"]))])\n result=subprocess.run(args,capture_output=True,text=True,timeout=12)\n if result.returncode:raise RuntimeError((result.stderr or result.stdout or "iperf3 client failed").strip()[-500:])\n report=json.loads(result.stdout);end=report["end"];received=end.get("sum_received") or end.get("sum") or {};bps=float(received.get("bits_per_second",0))\n if bps<=0:raise RuntimeError("iperf3 completed without reporting received throughput")\n out={"mbps":round(bps/1000000,2)}\nelse:raise ValueError("unsupported iperf3 operation")\nprint(json.dumps(out))'''
     remote='runuser -u tunnelmgr -- /usr/bin/python3 -c '+shlex.quote(code)
     result=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=25)
     if result.returncode:raise RuntimeError((result.stderr or result.stdout or 'remote iperf3 command failed')[-800:])
@@ -306,7 +314,7 @@ def tunnel_iperf_operation(server_id,servers,operation,**values):
     if server_id=='local':
         if operation=='start':return {'pid':iperf3_server_start(payload['address'],payload['port'])}
         if operation=='stop':iperf3_server_stop(payload['pid']);return {'ok':True}
-        if operation=='client':return {'mbps':iperf3_client(payload['address'],payload['port'],payload.get('reverse',False))}
+        if operation=='client':return {'mbps':iperf3_client(payload['address'],payload['port'],payload.get('reverse',False),payload.get('source'))}
         raise ValueError('unsupported local iperf3 operation')
     return remote_iperf3(servers[server_id],payload)
 
@@ -347,12 +355,12 @@ def tunnel_speedtest(data):
             result={'state':'unsupported','a_server':a_id,'b_server':b_id,'a_local_ip':a_ip,'b_local_ip':b_ip,'checked_at':checked}
             save_tunnel_speedtest(ident,result)
             return result
-        def measure(source_id,dest_id,dest_ip,reverse):
+        def measure(source_id,dest_id,source_ip,dest_ip,reverse):
             chosen_port=port+int(reverse)
             server=tunnel_iperf_operation(dest_id,servers,'start',address=dest_ip,port=chosen_port);running.append((dest_id,server['pid']))
-            return float(tunnel_iperf_operation(source_id,servers,'client',address=dest_ip,port=chosen_port,reverse=reverse)['mbps'])
-        a_to_b=measure(a_id,b_id,b_ip,False)
-        b_to_a=measure(a_id,b_id,b_ip,True)
+            return float(tunnel_iperf_operation(source_id,servers,'client',address=dest_ip,port=chosen_port,reverse=reverse,source=source_ip)['mbps'])
+        a_to_b=measure(a_id,b_id,a_ip,b_ip,False)
+        b_to_a=measure(a_id,b_id,a_ip,b_ip,True)
         result={'state':'complete','a_server':a_id,'b_server':b_id,'a_local_ip':a_ip,'b_local_ip':b_ip,
                 'a_to_b_mbps':a_to_b,'b_to_a_mbps':b_to_a,'checked_at':checked,'duration_seconds':8}
     except Exception as error:
@@ -903,13 +911,9 @@ def create_instance(data):
     config={k:v for k,v in data.items() if k not in ("id","direction","server_id","transport","secret_managed")}
     carrier=config.get("carrier","tun")
     if carrier not in ("tcp","tcpmux","xtcpmux","ws","wss","wsmux","wssmux","xwsmux","anytls","tun"):raise ValueError("unsupported Backhaul carrier")
-    if carrier=="tun" and config.get("encapsulation","tcp")=="ipx":
-        # Older clients and hidden form fields can still send the default TCP
-        # peer addresses. Raw IPX uses outer addresses, so discard those fields.
-        for field in ("tun_local","tun_remote","health_port"):
-            config.pop(field,None)
-    if carrier=="tun" and config.get("encapsulation","tcp")=="tcp":
-        if "tun_local" not in config or "tun_remote" not in config:raise ValueError("Backhaul TUN over TCP requires local and peer tunnel addresses")
+    if carrier=="tun" and config.get("encapsulation","tcp")=="tcp" and not all(config.get(field) for field in ("tun_local","tun_remote")):raise ValueError("Backhaul TUN over TCP requires local and peer tunnel addresses")
+    if carrier=="tun" and all(config.get(field) for field in ("tun_local","tun_remote")):
+        if config.get("encapsulation","tcp")=="tcp" and ("tun_local" not in config or "tun_remote" not in config):raise ValueError("Backhaul TUN over TCP requires local and peer tunnel addresses")
         import ipaddress
         pair={str(ipaddress.ip_interface(config["tun_local"]).ip),str(ipaddress.ip_interface(config["tun_remote"]).ip)}
         for item in rows():
@@ -1021,6 +1025,17 @@ def allocate_pair_resources(snapshots,prefix='tn'):
     peer=str(subnet.network_address+2)+'/'+str(subnet.prefixlen)
     return interface,local,peer
 
+def allocate_backhaul_health_port(snapshot):
+    network=snapshot.get('network') or {}
+    if not network.get('tcp_inventory_ok'):raise RuntimeError('Could not inspect TCP listeners for a safe Backhaul health port.')
+    used=set(int(port) for port in network.get('tcp_ports',[]))
+    for item in snapshot.get('items',[]):
+        meta=item.get('metadata') or {}
+        if meta.get('manager')=='Backhaul' and meta.get('carrier')=='tun':used.add(int(meta.get('health_port') or 19080))
+    for port in range(19080,20080):
+        if port not in used:return port
+    raise RuntimeError('No free Backhaul health port is available on the server.')
+
 def allocate_l2tp_values(snapshots,encap='udp'):
     used_tunnel_ids=set();used_session_ids=set();used_ports=[]
     for snapshot in snapshots:
@@ -1075,10 +1090,9 @@ def create_backhaul_pair(data):
         if any(cfg.get('carrier')!='tun' for cfg in (a,b)):raise ValueError('IP tunnel pair requires TUN')
         if a.get('encapsulation','tcp')!=b.get('encapsulation','tcp') or a.get('tun_carrier','tcp')!=b.get('tun_carrier','tcp'):raise ValueError('peer carriers must match')
         if {a.get('mode'),b.get('mode')}!={'server','client'}:raise ValueError('one server and one client required')
-        if a.get('encapsulation','tcp')!='ipx':
-            interface,local,peer=allocate_pair_resources(snapshots,prefix='bh')
-            a.update(tun_name=interface,tun_local=local,tun_remote=peer)
-            b.update(tun_name=interface,tun_local=peer,tun_remote=local)
+        interface,local,peer=allocate_pair_resources(snapshots,prefix='bh')
+        a.update(tun_name=interface,tun_local=local,tun_remote=peer,health_port=allocate_backhaul_health_port(snapshots[0]))
+        b.update(tun_name=interface,tun_local=peer,tun_remote=local,health_port=allocate_backhaul_health_port(snapshots[1]))
         def call(sid,op):
             if sid=='local':
                 if op=='validate':return validate_tunnel_config(cfgs[sid])
@@ -1096,7 +1110,9 @@ def create_backhaul_pair(data):
         except Exception as error:
             failures=[]
             for sid in reversed(attempted):
-                try:call(sid,'delete')
+                try:
+                    current=(find(ident) if sid=='local' else next((item for item in server_remote(servers[sid],{'op':'list'}).get('items',[]) if item.get('id')==ident),None))
+                    if current:call(sid,'delete')
                 except Exception as cleanup:failures.append(sid+': '+str(cleanup))
             if failures:raise RuntimeError(str(error)+'; cleanup failed: '+'; '.join(failures)) from error
             raise

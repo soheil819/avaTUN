@@ -34,3 +34,7 @@ python3 scripts/check-backhaul-ip-pair.py
 # Linux root, isolated namespaces; includes bidirectional ping and HAProxy HTTP:
 python3 scripts/check-backhaul-carriers-netns.py /path/to/new/backhaul
 ```
+
+IPX pairs also receive a unique TUN interface, non-overlapping inner /30 and
+a free health listener port on each endpoint. Existing raw IPX tunnels can
+continue with their saved resources until edited.

@@ -1,3 +1,10 @@
+## 0.2.16 · beta17
+
+- Restore strongSwan table 220 routing during IPsec profile startup and bind speed tests to the actual inner source IP.
+- Allocate unique TUN names, private inner addresses and health ports for each Backhaul IPX pair.
+- Skip rollback deletion when a failed endpoint was never registered, preserving the original startup error.
+- Verified german-core to toger-1 IPsec ping and bidirectional iperf3, plus simultaneous Finland IPX links to tofin-1 and tofin-2.
+
 ## 0.2.15 · beta16
 
 - Real TUN IP links over all Backhaul stream carriers, including TCPMux and TLS/WebSocket variants.
