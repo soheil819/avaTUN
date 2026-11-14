@@ -11,7 +11,7 @@ SOCKET='/run/tunnelmgr/privd.sock'
 ID=re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
 NAME=re.compile(r'^[a-zA-Z0-9_]{1,15}$')
 APP_UID=pwd.getpwnam('tunnelmgr').pw_uid
-FIELDS={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','replace','carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
+FIELDS={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','replace','carrier','tun_carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
 
 def send(c,v):c.sendall((json.dumps(v)+'\n').encode())
 def invoke(args,timeout=65):return subprocess.run(['/usr/local/bin/backhaul-manager',*args],text=True,capture_output=True,timeout=timeout)
@@ -64,6 +64,15 @@ def tunnel_create(req,ident):
     if transport not in allowed:raise ValueError('unsupported Backhaul transport')
     args=['create',ident,'--mode',mode,'--transport',transport,'--secret-file',secret]
     if transport=='tun':
+        tun_carrier=cfg.get('tun_carrier','tcp')
+        if tun_carrier not in allowed or tun_carrier=='tun':raise ValueError('unsupported TUN carrier')
+        args += ['--tun-carrier',tun_carrier]
+        if mode=='client':
+            binds=cfg.get('source_bind',[])
+            if not isinstance(binds,list) or len(binds)>32:raise ValueError('invalid source_bind')
+            for bind in binds:args += ['--source-bind',str(ipaddress.ip_address(bind))]
+        for field,flag in ((('cert','--cert'),('key','--key')) if mode=='server' else (('ca','--ca'),('sni','--sni'),('edge','--edge'))):
+            if cfg.get(field):args += [flag,safe(cfg[field],512,field)]
         encapsulation=cfg.get('encapsulation','tcp')
         if encapsulation not in ('tcp','ipx'):raise ValueError('TUN encapsulation must be TCP or IPX')
         args += ['--encapsulation',encapsulation,'--tun-name',safe(cfg.get('tun_name','bh0'),15,'interface name')]

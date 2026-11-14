@@ -1,0 +1,382 @@
+{
+  "architecture": "linux-amd64",
+  "attribution": "https://t.me/ir_spoof",
+  "capture_audit": {
+    "arp_packets": 162,
+    "captures": 58,
+    "complete_packet_coverage_claimed": false,
+    "encrypted_payload_inspection_claimed": false,
+    "ipv4_packets": 132931,
+    "ipv6_packets": 736,
+    "outside_destination_packets": 0,
+    "packets": 133829,
+    "scope": "Observed outer IPv4/IPv6 destinations and ARP targets in bounded exported traffic samples",
+    "snapshot_truncated_packets": 102985,
+    "status": "passed"
+  },
+  "core_sha256": "2985f51360474f4ad1a3c0ed03fdca52aca0aa9c77d0568f9849376944c8bc48",
+  "installer_service_steps": [
+    {
+      "name": "01-wrong-checksum-rejected-without-writes",
+      "status": "passed"
+    },
+    {
+      "name": "02-production-offline-install",
+      "status": "passed"
+    },
+    {
+      "name": "03-installed-core-and-manager-identity",
+      "status": "passed"
+    },
+    {
+      "name": "04-unrelated-sentinel-and-network-prerequisite",
+      "status": "passed"
+    },
+    {
+      "name": "05-real-services-created-enabled-active",
+      "status": "passed"
+    },
+    {
+      "name": "06-real-manager-status-and-health",
+      "status": "passed"
+    },
+    {
+      "name": "07-systemd-tcp-fragmented-concurrent",
+      "status": "passed"
+    },
+    {
+      "name": "08-half-close-response",
+      "status": "passed"
+    },
+    {
+      "name": "09-real-client-service-restart",
+      "status": "passed"
+    },
+    {
+      "name": "10-manager-assigned-source-change-and-restart",
+      "status": "passed"
+    },
+    {
+      "name": "11-damaged-core-update-preserves-live-services",
+      "status": "passed"
+    },
+    {
+      "name": "12-owned-services-deleted-unrelated-sentinel-preserved",
+      "status": "passed"
+    }
+  ],
+  "ipx_cases": [
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-icmp-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "icmp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-icmp-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "icmp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-ipip-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "ipip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-ipip-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "ipip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-tcp-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "tcp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-tcp-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "tcp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-udp-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "udp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-udp-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "udp",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-gre-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "gre",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-gre-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "gre",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-bip-aes256-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "bip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 14,
+      "name": "ipx-bip-aes256-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "bip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-128-gcm",
+      "checks": 14,
+      "name": "ipx-bip-aes128-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "bip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "chacha20-poly1305",
+      "checks": 14,
+      "name": "ipx-bip-chacha-paired-spoof",
+      "outer_mtu": 1320,
+      "paired_source_spoof": true,
+      "profile": "bip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 2
+    },
+    {
+      "algorithm": "aes-256-gcm",
+      "checks": 20,
+      "name": "ipx-bip-extra-assigned-source",
+      "outer_mtu": 1320,
+      "paired_source_spoof": false,
+      "profile": "bip",
+      "status": "passed",
+      "tun_mtu": 1400,
+      "tun_queues": 1
+    }
+  ],
+  "limitations": [
+    "Independent application wire requires this reconstruction at both endpoints",
+    "Bounded captures do not prove complete traffic coverage or absence of malware",
+    "IPX replay state is bounded and memory-only; receiver restart and idle expiry reset its protection",
+    "Original proprietary scheduling, tuning and platform-specific behavior is not claimed byte-identical"
+  ],
+  "native_core_byte_equal_to_host": true,
+  "native_tests": {
+    "compiler": "go1.27.2",
+    "manager_tests": 28,
+    "offline_vendor": true,
+    "skipped_tests": 0,
+    "status": "passed",
+    "top_level_tests": {
+      "config": 4,
+      "core": 9,
+      "ipx": 12,
+      "transport": 14,
+      "tun": 5,
+      "wire": 10
+    },
+    "total_go_tests": 54
+  },
+  "ordinary_cases": [
+    {
+      "checks": 10,
+      "name": "tcp",
+      "status": "passed",
+      "transport": "tcp"
+    },
+    {
+      "checks": 9,
+      "name": "tcpmux",
+      "status": "passed",
+      "transport": "tcpmux"
+    },
+    {
+      "checks": 9,
+      "name": "xtcpmux",
+      "status": "passed",
+      "transport": "xtcpmux"
+    },
+    {
+      "checks": 9,
+      "name": "ws",
+      "status": "passed",
+      "transport": "ws"
+    },
+    {
+      "checks": 9,
+      "name": "wss",
+      "status": "passed",
+      "transport": "wss"
+    },
+    {
+      "checks": 9,
+      "name": "wsmux",
+      "status": "passed",
+      "transport": "wsmux"
+    },
+    {
+      "checks": 9,
+      "name": "wssmux",
+      "status": "passed",
+      "transport": "wssmux"
+    },
+    {
+      "checks": 9,
+      "name": "xwsmux",
+      "status": "passed",
+      "transport": "xwsmux"
+    },
+    {
+      "checks": 9,
+      "name": "anytls",
+      "status": "passed",
+      "transport": "anytls"
+    },
+    {
+      "checks": 10,
+      "name": "assigned-source-bind",
+      "status": "passed",
+      "transport": "tcp"
+    },
+    {
+      "checks": 10,
+      "name": "multiple-endpoints-reconnect",
+      "status": "passed",
+      "transport": "xtcpmux"
+    },
+    {
+      "checks": 6,
+      "name": "wrong-secret-refused",
+      "status": "passed",
+      "transport": "tcp"
+    },
+    {
+      "checks": 6,
+      "name": "untrusted-tls-refused",
+      "status": "passed",
+      "transport": "wss"
+    },
+    {
+      "checks": 10,
+      "name": "tun-tcp",
+      "status": "passed",
+      "transport": "tun"
+    }
+  ],
+  "original_sample_observations": {
+    "binary_sha256": "084ccd5c63605f58a655ab8b53d75552c1e878a4c0fc4168cd0b45f183d8ed1a",
+    "execution_scope": "Short CLI observations in an offline VM as UID 65534 with additional empty network namespaces and owned cgroups",
+    "installer_executed": false,
+    "installer_sha256": "17b30852df24a4ef3dedec85ade0b31659fd9a5ba4a2a410a1eacac52bc8efa1",
+    "malware_absence_certified": false,
+    "observations": 5,
+    "results": [
+      {
+        "exit_code": 0,
+        "name": "help-short"
+      },
+      {
+        "exit_code": 0,
+        "name": "help-long"
+      },
+      {
+        "exit_code": 0,
+        "name": "version-short"
+      },
+      {
+        "exit_code": 2,
+        "name": "version-long"
+      },
+      {
+        "exit_code": 1,
+        "name": "no-arguments"
+      }
+    ],
+    "wire_interoperability_claimed": false
+  },
+  "schema": 1,
+  "scope": "Independent reconstruction accepted with two new peers; original proprietary wire compatibility is not claimed",
+  "separate_final_package_privacy_audit_required": true,
+  "source_admission_archive_sha256": "dbabd6697ebe16e4bd2720382922fde30a7152177058b2b7c8d0eae9d21038d4",
+  "source_code_sha256": "c931aea0e069e7dd50002a2b3666cc7852ae9bc9a1fd8c1de296cdaaa45603fa",
+  "status": "passed",
+  "version": "0.1.0"
+}

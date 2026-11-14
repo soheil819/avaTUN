@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.14"
+APP_VERSION="0.2.15"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -1061,6 +1061,47 @@ def allocate_l2tp_values(snapshots,encap='udp'):
     port_b=free_port(used_ports[1],snapshots[1].get('network') or {})
     return tunnel_a,tunnel_b,session_a,session_b,port_a,port_b
 
+def create_backhaul_pair(data):
+    ident=data.get('id');ids=data.get('servers');configs=data.get('configs')
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('invalid tunnel ID')
+    if not isinstance(ids,list) or len(ids)!=2 or len(set(ids))!=2 or not isinstance(configs,dict) or set(configs)!=set(ids):raise ValueError('two endpoint configurations required')
+    servers={s['id']:s for s in server_rows()}
+    if any(sid!='local' and sid not in servers for sid in ids):raise ValueError('unknown managed server')
+    with NATIVE_PAIR_LOCK:
+        snapshots=[allocation_snapshot(sid,servers) for sid in ids]
+        if any(item.get('id')==ident for snap in snapshots for item in snap.get('items',[])):raise ValueError('tunnel ID already exists')
+        cfgs={sid:dict(configs[sid],id=ident,transport='backhaul') for sid in ids}
+        a,b=[cfgs[sid] for sid in ids]
+        if any(cfg.get('carrier')!='tun' for cfg in (a,b)):raise ValueError('IP tunnel pair requires TUN')
+        if a.get('encapsulation','tcp')!=b.get('encapsulation','tcp') or a.get('tun_carrier','tcp')!=b.get('tun_carrier','tcp'):raise ValueError('peer carriers must match')
+        if {a.get('mode'),b.get('mode')}!={'server','client'}:raise ValueError('one server and one client required')
+        if a.get('encapsulation','tcp')!='ipx':
+            interface,local,peer=allocate_pair_resources(snapshots,prefix='bh')
+            a.update(tun_name=interface,tun_local=local,tun_remote=peer)
+            b.update(tun_name=interface,tun_local=peer,tun_remote=local)
+        def call(sid,op):
+            if sid=='local':
+                if op=='validate':return validate_tunnel_config(cfgs[sid])
+                if op=='create':return create_instance(cfgs[sid])
+                return remove_tunnel_endpoint(ident)
+            payload={'op':op,'id':ident,'data':cfgs[sid]} if op!='delete' else {'op':'operate','id':ident,'action':'delete'}
+            result=server_remote(servers[sid],payload)
+            if result.get('ok') is False:raise RuntimeError(result.get('error') or result.get('output') or 'endpoint operation failed')
+            return result
+        for sid in ids:call(sid,'validate')
+        attempted=[]
+        try:
+            for sid in sorted(ids,key=lambda sid:cfgs[sid]['mode']=='client'):
+                attempted.append(sid);call(sid,'create')
+        except Exception as error:
+            failures=[]
+            for sid in reversed(attempted):
+                try:call(sid,'delete')
+                except Exception as cleanup:failures.append(sid+': '+str(cleanup))
+            if failures:raise RuntimeError(str(error)+'; cleanup failed: '+'; '.join(failures)) from error
+            raise
+        return {'id':ident,'configs':cfgs}
+
 def create_native_pair(data):
     ident=data.get('id');kind=data.get('transport');a_id=data.get('server_a');b_id=data.get('server_b');action=data.get('action','create')
     if not isinstance(ident,str) or not ID.fullmatch(ident) or len(ident)>41:raise ValueError('invalid native tunnel ID')
@@ -1482,7 +1523,7 @@ def normalize_rebuild_config(ident,data,previous):
     if (transport=='backhaul')!=(previous.get('transport')=='backhaul'):
         raise ValueError('Changing between Backhaul and native tunnel types is not supported')
     if transport=='backhaul':
-        allowed={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
+        allowed={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','carrier','tun_carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
         config={k:v for k,v in data.items() if k in allowed}
         config.setdefault('mode',previous.get('mode','server'))
         config.setdefault('secret_file',previous.get('secret_file'))
@@ -2032,7 +2073,7 @@ def server(host,port):
                 except Exception as e:return self.send(502,{"error":str(e)})
             operator_action=re.fullmatch(r"/api/v1/tunnels/[a-z0-9_-]+/(start|stop|restart|health|delete)",self.path)
             speedtest_action=re.fullmatch(r"/api/v1/tunnels/([a-z0-9_-]+)/speedtest",self.path)
-            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/rebuild","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
+            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul-pair","/api/v1/tunnels/rebuild","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
             if role!="admin" and (self.path!="/api/v1/mesh/plan" and not (role=="operator" and (operator_action or operator_create))):
                 return self.send(403,{"error":"insufficient permissions"})
             try:
@@ -2083,6 +2124,7 @@ def server(host,port):
                 if self.path=="/api/v1/tunnels/mtu-probe":
                     data=self.body()
                     return self.send(200,recommended_tunnel_mtu(data.get("server_a"),data.get("server_b"),data.get("host_a"),data.get("host_b"),data.get("transport")))
+                if self.path=="/api/v1/tunnels/backhaul-pair":return self.send(201,create_backhaul_pair(self.body()))
                 if self.path=="/api/v1/tunnels/backhaul":return self.send(201,create_instance(self.body()))
                 if self.path=="/api/v1/tunnels/rebuild":
                     data=self.body()

@@ -677,6 +677,7 @@ def build_config(args: argparse.Namespace) -> dict:
         return read_config(Path(args.config))
     if args.mode not in ("server", "client") or not args.secret_file:
         raise ManagerError("Supply --config FILE or --mode server/client and a private --secret-file.")
+    tun_carrier = getattr(args, "tun_carrier", "tcp") if args.transport == "tun" else args.transport
     is_ipx = args.transport == "tun" and args.encapsulation == "ipx"
     if args.encapsulation == "ipx" and args.transport != "tun":
         raise ManagerError("IPX encapsulation requires TUN transport.")
@@ -688,9 +689,9 @@ def build_config(args: argparse.Namespace) -> dict:
         raise ManagerError("UDP-over-TCP acceptance applies only to a TCP server.")
     if args.proxy_protocol and (args.mode != "server" or args.transport in ("tun", "ws")):
         raise ManagerError("PROXY protocol applies only to supported non-TUN server transports.")
-    if args.edge and (args.mode != "client" or args.transport not in ("ws", "wss", "wsmux", "wssmux", "xwsmux")):
+    if args.edge and (args.mode != "client" or tun_carrier not in ("ws", "wss", "wsmux", "wssmux", "xwsmux")):
         raise ManagerError("Edge destination applies only to a WebSocket dialer.")
-    if (args.cert or args.key or args.ca or args.sni) and args.transport not in TLS_TRANSPORTS:
+    if (args.cert or args.key or args.ca or args.sni) and tun_carrier not in TLS_TRANSPORTS:
         raise ManagerError("TLS options apply only to TLS transports.")
     if args.mode == "client" and (args.cert or args.key) or args.mode == "server" and args.ca:
         raise ManagerError("Use certificate/key on the TLS server and CA trust file on its client.")
@@ -737,7 +738,7 @@ def build_config(args: argparse.Namespace) -> dict:
                 config["dialer"]["local_addr" if len(values) == 1 else "local_addrs"] = values[0] if len(values) == 1 else values
             if args.transport != "tun":
                 config["transport"]["connection_pool"] = args.pool
-    if args.transport.endswith("mux"):
+    if tun_carrier.endswith("mux"):
         config["mux"] = {"mux_version": 2, "mux_concurrency": 8, "mux_framesize": 32768,
                          "mux_recievebuffer": 4194304, "mux_streambuffer": 2097152}
     if args.transport == "tun":
@@ -745,9 +746,9 @@ def build_config(args: argparse.Namespace) -> dict:
         remote = args.tun_remote or ("10.200.0.2/30" if args.mode == "server" else "10.200.0.1/30")
         ipaddress.ip_interface(local)
         ipaddress.ip_interface(remote)
-        config["tun"] = {"encapsulation": args.encapsulation, "name": safe_text(args.tun_name), "local_addr": local,
+        config["tun"] = {"carrier": tun_carrier if not is_ipx else "", "encapsulation": args.encapsulation, "name": safe_text(args.tun_name), "local_addr": local,
                          "remote_addr": remote, "health_port": args.health_port, "mtu": args.tun_mtu or (1320 if is_ipx else 1500)}
-    if args.transport in TLS_TRANSPORTS:
+    if tun_carrier in TLS_TRANSPORTS:
         config["tls"] = {"insecure_skip_verify": False}
         if args.sni:
             config["tls"]["sni"] = safe_text(args.sni)
@@ -896,6 +897,7 @@ def parser() -> argparse.ArgumentParser:
     create.add_argument("--ca")
     create.add_argument("--sni")
     create.add_argument("--encapsulation", choices=("tcp", "ipx"), default="tcp")
+    create.add_argument("--tun-carrier", choices=tuple(x for x in TRANSPORTS if x != "tun"), default="tcp")
     create.add_argument("--tun-name", default="backhaul0")
     create.add_argument("--tun-local")
     create.add_argument("--tun-remote")

@@ -1,3 +1,9 @@
+## 0.2.15 · beta16
+
+- Real TUN IP links over all Backhaul stream carriers, including TCPMux and TLS/WebSocket variants.
+- Central two-endpoint address/interface allocation, paired creation and legacy edit migration.
+- Complete reproducible offline core source, namespace ping and HAProxy forwarding checks.
+
 ## avaTUN 0.2.14
 
 - Rebuild tunnel edits and restarts as one controller transaction: read and validate both endpoint configs, fully remove both managed endpoints, then create both from scratch with the responder first.

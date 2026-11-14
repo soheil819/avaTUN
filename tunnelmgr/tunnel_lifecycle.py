@@ -39,6 +39,11 @@ def rebuild(t, ident, server_ids, configs=None, operation='restart'):
     with t.NATIVE_PAIR_LOCK:
         # Read and validate *all* endpoints before the first destructive call.
         previous={sid:call(sid,'config') for sid in server_ids}
+        if configs and all(configs[sid].get('transport')=='backhaul' and configs[sid].get('carrier')=='tun' and configs[sid].get('encapsulation','tcp')!='ipx' for sid in server_ids) and any(not configs[sid].get('tun_local') or not configs[sid].get('tun_remote') for sid in server_ids):
+            interface,local,peer=t.allocate_pair_resources([t.allocation_snapshot(sid,servers) for sid in server_ids],prefix='bh')
+            configs={sid:dict(configs[sid]) for sid in server_ids}
+            configs[server_ids[0]].update(tun_name=interface,tun_local=local,tun_remote=peer)
+            configs[server_ids[1]].update(tun_name=interface,tun_local=peer,tun_remote=local)
         desired={sid:t.normalize_rebuild_config(ident,(configs or previous)[sid],previous[sid]) for sid in server_ids}
         a,b=[desired[sid] for sid in server_ids]
         if a['transport']!=b['transport']:raise ValueError('Both tunnel endpoints must use the same transport')
@@ -49,6 +54,7 @@ def rebuild(t, ident, server_ids, configs=None, operation='restart'):
             if all(cfg.get(key) for cfg in (a,b) for key in (left,right)):
                 if ipaddress.ip_interface(a[left]).ip!=ipaddress.ip_interface(b[right]).ip or ipaddress.ip_interface(a[right]).ip!=ipaddress.ip_interface(b[left]).ip:
                     raise ValueError('Local and peer addresses must be inverse on the two endpoints')
+        if a['transport']=='backhaul' and any(a.get(key,'tcp' if key=='tun_carrier' else 'tun')!=b.get(key,'tcp' if key=='tun_carrier' else 'tun') for key in ('carrier','tun_carrier')):raise ValueError('Both Backhaul peers must use the same carrier')
         for key in ('psk','preshared_key'):
             if a.get(key) and b.get(key) and a[key]!=b[key]:raise ValueError('The peers must use the same shared key')
         for sid in server_ids:call(sid,'validate',desired[sid])
