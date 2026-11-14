@@ -1,3 +1,8 @@
+## avaTUN 0.2.26 · بازطراحی تم‌های رنگی
+
+- Replace the broad gradient theme override with eight restrained accent palettes; keep panel surfaces, navigation layout and neutral actions consistent.
+- Remove oversized palette glows, improve text contrast and migrate existing browser selections to the new palette set.
+
 ## avaTUN 0.2.25 · beta19 · نخستین نسخهٔ آزمایش عملی
 
 - Add 12 selectable neon accent palettes to dashboard settings; the chosen palette is saved per browser and the default layout remains intact.
