@@ -194,7 +194,7 @@ class Telegram:
             current.append(char); length += units
         chunks.append(''.join(current) or '—')
         for index, chunk in enumerate(chunks):
-            data = {'chat_id': user_id, 'text': chunk}
+            data = {'chat_id': user_id, 'text': chunk, 'protect_content': True}
             if keyboard and index == len(chunks) - 1:
                 data['reply_markup'] = {'inline_keyboard': keyboard}
             self.request('sendMessage', data)

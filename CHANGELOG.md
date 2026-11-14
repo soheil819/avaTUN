@@ -1,3 +1,7 @@
+## avaTUN 0.2.28 · محافظت از پیام‌های ربات
+
+- Protect native Telegram bot messages from forwarding and saving, matching the existing widget protection.
+
 ## avaTUN 0.2.27 · رنگ‌بندی گسترده‌تر تم‌ها
 
 - Extend the selected palette across the page background, navigation, cards, forms, notices, tables and mesh canvas.

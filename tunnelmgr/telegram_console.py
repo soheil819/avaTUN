@@ -21,6 +21,7 @@ class ConsoleMixin:
         key = 'console:' + str(user_id)
         saved = self.state.get(key) or {}
         data = {'chat_id':user_id, 'text':self.scrub(digits(text)),
+                'protect_content':True,
                 'reply_markup':{'inline_keyboard':keyboard or []},
                 'link_preview_options':{'is_disabled':True}}
         if html: data['parse_mode'] = 'HTML'
