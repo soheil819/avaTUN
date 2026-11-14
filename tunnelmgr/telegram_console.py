@@ -152,6 +152,7 @@ class ConsoleMixin:
                 operation={'kind':'tunnel','target':target,'action':action,'expected':sides}
                 title={'start':'شروع تونل','stop':'توقف تونل','restart':'راه‌اندازی مجدد تونل'}[action]
                 body=f"تونل: {target}\nسرورها: {' ⇄ '.join(sides)}\n"+('اتصال‌های عبوری ممکن است قطع شوند.' if action!='start' else 'هر دو سمت راه‌اندازی می‌شوند.')
+                if action=='restart':body+='\nسرویس و رابط هر دو سمت حذف و از تنظیمات ذخیره‌شده دوباره ساخته می‌شوند.'
             return self.confirm_operation(user_id,title,body,operation,current)
         if query.startswith('cf:'):
             _,action,target=query.split(':',2)

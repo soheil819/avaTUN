@@ -219,9 +219,20 @@ class ClientChecks(unittest.TestCase):
                 raise tg.PanelError('peer unavailable')
             return {'ok': True}
         with patch.object(panel, 'snapshot', return_value=snapshot()), patch.object(panel, 'request', side_effect=request):
-            result = panel.operate('gre-test', 'restart', ['local', 'peer'])
+            result = panel.operate('gre-test', 'stop', ['local', 'peer'])
         self.assertIn('✅', result[0]); self.assertIn('❌', result[1])
         self.assertEqual(2, sum(data is not None for path, data in calls))
+
+    def test_restart_uses_one_coordinated_rebuild_request(self):
+        panel=tg.Panel({'panel_url':'http://127.0.0.1:1'})
+        def request(path,data=None,timeout=None):
+            return {'items':[{'id':'gre-test'}]} if path.endswith('/peer/tunnels') else {'ok':True}
+        with patch.object(panel,'snapshot',return_value=snapshot()),patch.object(panel,'request',side_effect=request) as calls:
+            panel.operate('gre-test','restart',['local','peer'])
+        mutations=[c for c in calls.call_args_list if len(c.args)>1 and c.args[1] is not None]
+        self.assertEqual(1,len(mutations))
+        self.assertEqual('/api/v1/tunnels/gre-test/restart',mutations[0].args[0])
+        self.assertEqual({'servers':['local','peer']},mutations[0].args[1])
 
 
 class WidgetChecks(unittest.TestCase):

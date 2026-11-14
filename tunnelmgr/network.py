@@ -73,6 +73,45 @@ def iface(name):
     if not re.fullmatch(r'[A-Za-z0-9_]{1,15}', name): raise ValueError('invalid interface')
     return name
 
+def verify_tunnel_link(name, kind):
+    """Only touch an existing virtual link of the saved tunnel's actual type."""
+    name=iface(name);path=pathlib.Path('/sys/class/net')/name
+    if not path.exists():return
+    if name=='lo' or (path/'device').exists():raise ValueError('Refusing to remove physical/loopback interface '+name)
+    expected={'gre':{'gre'},'gre-fou':{'gre'},'ipip':{'ipip'},'ipip-fou':{'ipip'},
+              'gretap':{'gretap'},'geneve':{'geneve'},'vxlan':{'vxlan'},'erspan':{'erspan'},
+              'sit-6to4':{'sit'},'sit-isatap':{'sit'},'sit-fou':{'sit'},'wireguard':{'wireguard'},
+              'l2tpv3':{'l2tpeth'},'openvpn':{'tun'},'openconnect':{'tun'},'backhaul':{'tun'}}.get(kind,set())
+    result=subprocess.run(['/usr/sbin/ip','-json','-details','link','show','dev',name],capture_output=True,text=True,timeout=8)
+    if result.returncode:raise RuntimeError('Could not verify managed interface '+name+': '+result.stderr.strip())
+    info=json.loads(result.stdout)[0].get('linkinfo',{}).get('info_kind')
+    if info is None and (path/'tun_flags').exists():info='tun'
+    if info is None and kind=='l2tpv3':
+        # l2tp_eth does not expose IFLA_INFO_KIND on several supported kernels.
+        sessions=subprocess.run(['/usr/sbin/ip','-json','l2tp','show','session'],capture_output=True,text=True,timeout=8)
+        if sessions.returncode==0 and any(s.get('interface')==name for s in json.loads(sessions.stdout)):
+            info='l2tpeth'
+    if info not in expected:raise ValueError(f'Refusing to remove {name}: link type {info!r} does not match {kind}')
+
+def remove_managed_link(name, kind):
+    verify_tunnel_link(name,kind)
+    if not pathlib.Path('/sys/class/net',name).exists():return
+    run('link','del','dev',name)
+    if pathlib.Path('/sys/class/net',name).exists():raise RuntimeError('Managed tunnel interface still exists: '+name)
+
+def remove_l2tp(*args):
+    result=subprocess.run(['/usr/sbin/ip','l2tp','del',*args],capture_output=True,text=True,timeout=10)
+    missing=('No such file','No such process','No such device','Cannot find','not found')
+    if result.returncode and not any(value in result.stderr for value in missing):
+        raise RuntimeError(result.stderr.strip() or 'could not remove L2TP resource')
+
+def stop_tunnel_unit(unit, timeout=30):
+    result=subprocess.run(['/usr/bin/systemctl','disable','--now',unit],capture_output=True,text=True,timeout=timeout)
+    if result.returncode:
+        state=subprocess.run(['/usr/bin/systemctl','show',unit,'-p','LoadState','-p','ActiveState'],capture_output=True,text=True,timeout=8)
+        if 'LoadState=not-found' not in state.stdout:
+            raise RuntimeError(result.stderr.strip() or 'Could not stop '+unit)
+
 def openconnect_server_config(profile, name, base, users, runtime):
     """Build an ocserv config whose /30 has exactly one client lease."""
     import ipaddress
@@ -87,6 +126,8 @@ def private(net):
 
 def apply(profile, up, profile_name=None):
     kind=profile['kind']
+    if not up and kind in ('gre','ipip','gretap','geneve','vxlan','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','wireguard','openvpn','openconnect'):
+        verify_tunnel_link(profile['interface'],kind)
     supported=('gre','gretap','geneve','vxlan','ipip','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou')
     if kind in supported:
         sit_shared=kind in ('sit-6to4','sit-isatap')
@@ -227,7 +268,7 @@ def apply(profile, up, profile_name=None):
         base=pathlib.Path('/etc/tunnelmgr/openvpn');base.mkdir(mode=0o700,parents=True,exist_ok=True)
         config=base/(ident+'.conf');ccd=base/('ccd-'+ident);unit='tunnelmgr-openvpn@'+ident+'.service'
         if not up:
-            subprocess.run(['/usr/bin/systemctl','disable','--now',unit],capture_output=True,timeout=25)
+            stop_tunnel_unit(unit)
             config.unlink(missing_ok=True)
             if ccd.is_dir():
                 import shutil
@@ -266,7 +307,7 @@ def apply(profile, up, profile_name=None):
         base=pathlib.Path('/etc/tunnelmgr/openconnect')/ident
         unit='tunnelmgr-'+('ocserv' if profile['role']=='server' else 'openconnect')+'@'+ident+'.service'
         if not up:
-            subprocess.run(['/usr/bin/systemctl','disable','--now',unit],capture_output=True,timeout=30)
+            stop_tunnel_unit(unit)
             shutil.rmtree(base,ignore_errors=True)
             if profile['role']=='server':shutil.rmtree('/run/tunnelmgr-ocserv-'+ident,ignore_errors=True)
             return
@@ -295,8 +336,8 @@ def apply(profile, up, profile_name=None):
     elif kind=='l2tpv3':
         name=iface(profile['interface']);tid=int(profile['tunnel_id']);ptid=int(profile['peer_tunnel_id']);sid=int(profile['session_id']);psid=int(profile['peer_session_id'])
         if not up:
-            run('l2tp','del','session','tunnel_id',str(tid),'session_id',str(sid))
-            run('l2tp','del','tunnel','tunnel_id',str(tid))
+            remove_l2tp('session','tunnel_id',str(tid),'session_id',str(sid))
+            remove_l2tp('tunnel','tunnel_id',str(tid))
             return
         src,dst=map(ip.IPv4Address,(profile['outer_local'],profile['outer_peer']))
         args=['l2tp','add','tunnel','tunnel_id',str(tid),'peer_tunnel_id',str(ptid),'local',str(src),'remote',str(dst),'encap',profile.get('encap','udp')]
@@ -312,7 +353,7 @@ def apply(profile, up, profile_name=None):
         conf=pathlib.Path('/etc/swanctl/conf.d/tunnelmgr-'+safe+'.conf')
         if not up:
             subprocess.run(['/usr/sbin/swanctl','--terminate','--ike',safe],capture_output=True,timeout=15)
-            subprocess.run(['/usr/sbin/ip','address','del',profile['inner_local'],'dev','lo'],capture_output=True)
+            subprocess.run(['/usr/sbin/ip','address','del',str(ip.IPv4Interface(profile['inner_local']).ip)+'/32','dev','lo'],capture_output=True)
             return
         local=ip.IPv4Address(profile['inner_local'].split('/')[0]);peer=ip.IPv4Address(profile['inner_peer'].split('/')[0])
         li=str(profile.get('local_id') or profile['outer_local']);ri=str(profile.get('remote_id') or profile['outer_peer'])

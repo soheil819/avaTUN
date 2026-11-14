@@ -137,11 +137,9 @@ class Panel:
                 if not any(item['id'] == tunnel_id for item in items):
                     raise PanelError('تونل روی ' + server_id + ' پیدا نشد؛ فهرست را بازخوانی کن.')
         escaped = urllib.parse.quote(tunnel_id, safe='')
-        if action == 'restart' and any(item.get('metadata', {}).get('transport') == 'ipsec-esp-udp' for item in endpoints):
-            if 'local' not in actual:
-                raise PanelError('برای این جفت IPsec از ریستارت هماهنگ پنل استفاده کن.')
-            self.request('/api/v1/tunnels/' + escaped + '/restart', {})
-            return ['ریستارت هماهنگ IPsec روی دو سمت انجام شد.']
+        if action == 'restart':
+            self.request('/api/v1/tunnels/' + escaped + '/restart', {'servers':actual},timeout=360)
+            return ['پاک‌سازی و بازسازی هماهنگ هر دو سمت انجام شد.']
         results = []
         for server_id in actual:
             prefix = '/api/v1/tunnels/' if server_id == 'local' else '/api/v1/servers/' + server_id + '/tunnels/'

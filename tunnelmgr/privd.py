@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Restricted root helper for validated Backhaul TUN instances."""
 from profiles import manage
+from network import verify_tunnel_link, remove_managed_link
+import tomllib
+import tempfile
+from haproxy_stats import append_block as append_stats, without_block as without_stats, settings as stats_settings, PORT as STATS_PORT
 import ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
 from pathlib import Path
 SOCKET='/run/tunnelmgr/privd.sock'
@@ -110,10 +114,62 @@ def tunnel_create(req,ident):
         if not isinstance(peer,str) or len(peer)>255 or ':' not in peer:raise ValueError('client requires peer HOST:PORT')
         args += ['--peer',peer]
     if cfg.get('replace') is True:args.append('--replace')
+    if req.get('validate_only'):
+        if not Path(secret).is_file():raise ValueError('The saved Backhaul secret file is missing')
+        if transport=='tun':
+            name=cfg.get('tun_name','bh0');path=Path('/sys/class/net')/name
+            if path.exists():
+                saved=Path('/etc/backhaul')/(ident+'.toml')
+                previous=tomllib.loads(saved.read_text()) if saved.is_file() else {}
+                if previous.get('tun',{}).get('name')!=name:raise ValueError('The requested Backhaul TUN interface is already in use')
+                verify_tunnel_link(name,'backhaul')
+        return {'ok':True}
     args.append('--start')
     p=invoke(args)
     if p.returncode:raise RuntimeError((p.stdout+p.stderr)[-3000:])
     return {'ok':True,'output':(p.stdout+p.stderr)[-4000:]}
+
+def delete_backhaul(ident):
+    config=Path('/etc/backhaul')/(ident+'.toml')
+    unit=Path('/etc/systemd/system')/('backhaul-'+ident+'.service')
+    marker_dir=Path('/var/lib/backhaul-manager/removals')
+    marker=marker_dir/(ident+'.json')
+    saved=json.loads(marker.read_text()) if marker.is_file() else None
+    if config.is_file():
+        owned=invoke(['status',ident],timeout=15)
+        if owned.returncode:raise RuntimeError((owned.stdout+owned.stderr)[-1500:])
+        previous=tomllib.loads(config.read_text());saved={'tun_name':previous.get('tun',{}).get('name')}
+        if saved['tun_name']:verify_tunnel_link(saved['tun_name'],'backhaul')
+        marker_dir.mkdir(mode=0o700,parents=True,exist_ok=True)
+        fd=os.open(marker,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+        with os.fdopen(fd,'w') as f:json.dump(saved,f)
+    if saved is None:raise ValueError('The managed Backhaul cleanup record is missing')
+    state_path=Path('/var/lib/backhaul-manager/state.json')
+    state=json.loads(state_path.read_text()) if state_path.is_file() else {}
+    if ident in state.get('tunnels',{}):
+        result=invoke(['delete',ident,'--yes'])
+        if result.returncode:raise RuntimeError((result.stdout+result.stderr)[-2000:])
+    elif config.exists() or unit.exists():raise ValueError('Refusing to remove an unowned Backhaul service/config')
+    if saved.get('tun_name'):remove_managed_link(saved['tun_name'],'backhaul')
+    marker.unlink(missing_ok=True)
+    return {'ok':True}
+
+def preserve_backhaul_secret(ident):
+    owned=invoke(['status',ident],timeout=15)
+    if owned.returncode:raise RuntimeError((owned.stdout+owned.stderr)[-1500:])
+    config=tomllib.loads((Path('/etc/backhaul')/(ident+'.toml')).read_text())
+    security=config.get('security') or {};kind='psk' if security.get('psk') else 'token'
+    value=security.get(kind)
+    if not isinstance(value,str) or not value.isascii() or not 16<=len(value)<=4096:
+        raise ValueError('The owned Backhaul config has no valid saved secret')
+    path=Path('/etc/backhaul/secrets')/(ident+'.preserved.'+kind)
+    path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    with tempfile.NamedTemporaryFile('w',dir=path.parent,delete=False) as file:
+        pending=Path(file.name)
+        try:
+            file.write(value+'\n');file.flush();os.fsync(file.fileno());os.replace(pending,path)
+        finally:pending.unlink(missing_ok=True)
+    return {'ok':True,'secret_file':str(path)}
 
 def haproxy_apply(req):
     action=req.get('action','status')
@@ -135,6 +191,13 @@ def haproxy_apply(req):
                     if match:paths.setdefault(row[0][8:],{})[match[1]]=row[17]
             except Exception:paths={}
         return {'ok':p.returncode==0,'active':active,'status':p.stdout.strip() or p.stderr.strip(),'paths':paths}
+    if action=='ensure-stats':
+        cfg=Path('/etc/haproxy/haproxy.cfg')
+        if not cfg.is_file():raise ValueError('HAProxy configuration file is missing')
+        previous=cfg.read_bytes();candidate=append_stats(previous.decode())
+        active=subprocess.run(['/usr/bin/systemctl','is-active','--quiet','haproxy.service']).returncode==0
+        haproxy_commit(candidate,previous,active)
+        return {'ok':True,'stats_port':STATS_PORT,'metrics_path':'/metrics','stats_path':'/stats'}
     if action!='apply':raise ValueError('invalid HAProxy action')
     rules=req.get('rules')
     if not isinstance(rules,list) or len(rules)>100:raise ValueError('invalid HAProxy rule list')
@@ -142,11 +205,11 @@ def haproxy_apply(req):
     if not shutil.which('haproxy'):raise ValueError('HAProxy is not installed on the panel server')
     if not cfg.is_file():raise ValueError('HAProxy configuration file is missing')
     previous=cfg.read_bytes();current=previous.decode()
-    base=haproxy_without_managed_block(current)
+    base=without_stats(haproxy_without_managed_block(current))
     active=subprocess.run(['/usr/bin/systemctl','is-active','--quiet','haproxy.service']).returncode==0
     if not rules:
-        if base!=current:haproxy_commit(base,previous,active)
-        return {'ok':True,'active':False,'status':'no managed forwards'}
+        haproxy_commit(append_stats(base),previous,active)
+        return {'ok':True,'active':True,'status':'statistics only','stats_port':STATS_PORT}
     if HAPROXY_MARKER_START in base or HAPROXY_MARKER_END in base:raise ValueError('nested managed markers found in HAProxy configuration')
     lines=[HAPROXY_MARKER_START,'','defaults','    log global','    mode tcp','    option tcplog','    timeout connect 5s','    timeout client 60s','    timeout server 60s']
     seen=set();loopback_ports=set()
@@ -164,6 +227,7 @@ def haproxy_apply(req):
             local_addresses={a['local'] for iface in json.loads(addr_result.stdout) for item in iface.get('addr_info',[]) if (a:=item) and 'local' in a}
             if str(listen) not in local_addresses:raise ValueError('listener IP is not assigned to this server')
         port=rule.get('listen_port');backend_port=rule.get('backend_port')
+        if port==STATS_PORT:raise ValueError('Port 18404 is reserved for HAProxy statistics and Prometheus metrics')
         if type(port) is not int or not 1<=port<=65535 or type(backend_port) is not int or not 1<=backend_port<=65535:raise ValueError('ports must be 1..65535')
         endpoint=(str(listen),port)
         if endpoint in seen:raise ValueError('duplicate listener address and port')
@@ -233,7 +297,7 @@ def haproxy_apply(req):
             lines.append(f'    server {name} {target} '+' '.join(options))
     lines.append(HAPROXY_MARKER_END)
     content=base.rstrip()+'\n\n'+'\n'.join(lines)+'\n'
-    haproxy_commit(content,previous,active)
+    haproxy_commit(append_stats(content),previous,active)
     return {'ok':True,'active':True,'status':'active'}
 def handle(c):
     try:
@@ -243,6 +307,11 @@ def handle(c):
         if len(raw)>65536:return send(c,{'error':'request too large'})
         req=json.loads(raw);op=req.get('op');ident=req.get('id')
         if not isinstance(ident,str) or not ID.fullmatch(ident):return send(c,{'error':'invalid id'})
+        if op=='validate-backhaul':
+            return send(c,tunnel_create({**req,'validate_only':True},ident))
+        if op=='backhaul-secret-path':return send(c,preserve_backhaul_secret(ident))
+        if op=='haproxy-stats' and req.get('action')=='read':
+            return send(c,{'ok':True,'config':stats_settings()})
         if op=='probe':
             peer=ipaddress.ip_address(req.get('peer',''))
             iface=req.get('interface')
@@ -294,6 +363,7 @@ def handle(c):
                 return send(c,{'ok':True,'path':str(path)})
             if action=='delete':
                 path.unlink(missing_ok=True)
+                (path.parent/(ident+'.preserved.'+kind)).unlink(missing_ok=True)
                 return send(c,{'ok':True})
             raise ValueError('invalid secret action')
         if op=='profile':return send(c,manage(req,ident))
@@ -424,7 +494,7 @@ def handle(c):
         if op in ('start','stop','restart','health'):
             p=invoke([op,ident]);return send(c,{'ok':p.returncode==0,'output':(p.stdout+p.stderr)[-8000:]})
         if op=='delete':
-            p=invoke(['delete',ident,'--yes']);return send(c,{'ok':p.returncode==0,'output':(p.stdout+p.stderr)[-8000:]})
+            return send(c,delete_backhaul(ident))
         if op=='status':
             p=invoke(['status',ident],10)
             if p.returncode:return send(c,{'error':p.stderr[-2000:]})

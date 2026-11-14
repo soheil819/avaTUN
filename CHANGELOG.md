@@ -1,3 +1,12 @@
+## avaTUN 0.2.14
+
+- Rebuild tunnel edits and restarts as one controller transaction: read and validate both endpoint configs, fully remove both managed endpoints, then create both from scratch with the responder first.
+- Explicitly stop/disable the tunnel service and clean leftover interfaces even for inactive/failed units; keep shared service templates and physical interfaces protected. Make L2TP cleanup idempotent and remove IPsec loopback addresses with their actual `/32` prefix.
+- Keep saved keys, shared secrets, interface names and internal addresses during restart. Retain interface/address values during native edits unless explicitly changed, and preserve paired WireGuard/OpenVPN credentials.
+- Save private recovery journals before teardown and restore both previous endpoint configs on failure. Report incomplete cleanup/rollback rather than silently treating it as success.
+- Route web, MTU edits, and Telegram restarts through the coordinated rebuild path for every supported tunnel transport.
+- Add HAProxy statistics on `0.0.0.0:18404/stats` and the built-in Prometheus exporter at `/metrics` to every managed HAProxy configuration, including stats-only servers. Keep authentication in private runtime configuration and transfer it to managed nodes during installation.
+
 ## avaTUN 0.2.13
 
 - Make only the Telegram resources screen a live per-server card with CPU/RAM/disk/swap meters, upload/download rates, sample age, and 15-second refresh.

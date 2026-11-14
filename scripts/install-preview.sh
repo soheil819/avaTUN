@@ -212,7 +212,13 @@ install -d -o root -g tunnelmgr -m 0750 /etc/avatun
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/openconnect_runner.py" /opt/tunnelmgr/tunnelmgr/openconnect_runner.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/routing.py" /opt/tunnelmgr/tunnelmgr/routing.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/topology.py" /opt/tunnelmgr/tunnelmgr/topology.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnel_lifecycle.py" /opt/tunnelmgr/tunnelmgr/tunnel_lifecycle.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/privd.py" /opt/tunnelmgr/tunnelmgr/privd.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/haproxy_stats.py" /opt/tunnelmgr/tunnelmgr/haproxy_stats.py
+if [ -f "$ROOT/runtime/haproxy-stats.json" ]; then
+    install -d -o root -g root -m 0755 /etc/avatun
+    install -o root -g root -m 0600 "$ROOT/runtime/haproxy-stats.json" /etc/avatun/haproxy-stats.json
+fi
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr-privd.service" /etc/systemd/system/tunnelmgr-privd.service
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr-github-update.service" "$ROOT/packaging/systemd/tunnelmgr-github-update-check.service" /etc/systemd/system/
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr-github-update-check.timer" /etc/systemd/system/
@@ -273,6 +279,10 @@ fi
 # complete primary config before starting/reloading the service. An invalid
 # pre-existing HAProxy config must not block the panel update or be rewritten.
 if command -v haproxy >/dev/null 2>&1 && [ -r /etc/haproxy/haproxy.cfg ]; then
+    python3 -c "import sys;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');from privd import haproxy_apply;haproxy_apply({'action':'ensure-stats'})"
+    if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+        ufw allow 18404/tcp
+    fi
     if haproxy -c -f /etc/haproxy/haproxy.cfg; then
         systemctl enable haproxy.service
         if systemctl is-active --quiet haproxy.service; then

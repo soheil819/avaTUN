@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 
-from network import apply, iface, private
+from network import apply, iface, private, verify_tunnel_link, remove_managed_link
 from topology import mesh_plan
 from routing import validate as validate_routing
 
@@ -153,6 +153,14 @@ def manage(req, ident):
     if action=='read' and old is not None:
         return {'config':old}
     unit = f'tunnelmgr-{group}@{ident}.service'
+    if action=='validate' and group=='network':
+        cfg=req['config'];validate(group,cfg)
+        if cfg.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+            device=Path('/sys/class/net')/cfg['interface']
+            if device.exists():
+                if not old or old.get('interface')!=cfg['interface']:raise ValueError('The requested tunnel interface is already in use')
+                verify_tunnel_link(cfg['interface'],cfg['kind'])
+        return {'ok':True}
     if action in ('create','update'):
         cfg = req['config']
         validate(group,cfg)
@@ -208,11 +216,21 @@ def manage(req, ident):
             return {'ok':True,'output':'Tunnel service start was accepted and is still activating.'}
         return {'ok':True,'output':result.stdout.strip()}
     if old and group=='network' and action=='delete' and old.get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'):
-        subprocess.run(['systemctl','disable','--now',unit],capture_output=True,text=True,timeout=15)
+        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+            verify_tunnel_link(old['interface'],old['kind'])
+        stopped=subprocess.run(['systemctl','disable','--now',unit],capture_output=True,text=True,timeout=45)
+        if stopped.returncode:raise RuntimeError(stopped.stderr.strip() or 'Could not stop and disable '+unit)
+        # ExecStop is skipped for inactive/failed oneshot units. Explicit cleanup
+        # must run while the old JSON still exists, even if systemd did nothing.
+        apply(old,False,ident)
+        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+            remove_managed_link(old['interface'],old['kind'])
         if old.get('kind') in ('ipsec-ikev2','ipsec-esp-udp'):
             safe=re.sub(r'[^a-zA-Z0-9_-]','_',old['interface'])
             Path('/etc/swanctl/conf.d/tunnelmgr-'+safe+'.conf').unlink(missing_ok=True)
             subprocess.run(['/usr/sbin/swanctl','--load-all'],capture_output=True,timeout=15)
         path.unlink()
+        subprocess.run(['systemctl','reset-failed',unit],capture_output=True,text=True,timeout=10)
+        subprocess.run(['systemctl','daemon-reload'],check=True,capture_output=True,text=True,timeout=10)
         return {'ok':True}
     raise ValueError('Unknown profile or action')

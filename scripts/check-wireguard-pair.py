@@ -37,6 +37,7 @@ def fake_local(data):created.append(("local",data));return {"ok":True}
 
 with patch.object(tunnelctl,"server_rows",return_value=[{"id":"fsn1","host":"198.51.100.2","user":"root","identity":"/unused"}]), \
      patch.object(tunnelctl,"rows",return_value=[]), \
+     patch.object(tunnelctl,"allocation_snapshot",return_value={'items':[],'network':{'interfaces':[]}}), \
      patch.object(tunnelctl,"server_remote",side_effect=fake_remote), \
      patch.object(tunnelctl,"create_native",side_effect=fake_local), \
      patch.object(tunnelctl.shutil,"which",return_value="/usr/bin/wg"), \

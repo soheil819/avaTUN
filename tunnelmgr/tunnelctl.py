@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.13"
+APP_VERSION="0.2.14"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -20,7 +20,7 @@ SESSIONS={}
 MONITOR_LOCK=threading.Lock();MONITOR_TUNNELS={};MONITOR_SERVERS=[];MONITOR_RESOURCES=[]
 GEOIP_CACHE={}
 FORWARD_LOCK=threading.Lock()
-NATIVE_PAIR_LOCK=threading.Lock()
+NATIVE_PAIR_LOCK=threading.RLock()
 SPEEDTEST_LOCK=threading.Lock()
 FIELDS={"listen","peer","secret_file","tun_name","tun_local","tun_remote","tun_mtu","health_port","replace"}
 
@@ -613,11 +613,11 @@ def resource_monitor_loop():
 
 def server_remote(server,payload):
     import inspect
-    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n n=x['metadata'].get('native_profile');r=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\n if d['action']=='delete' and r.get('ok'):\n  with t.db() as c:c.execute('DELETE FROM tunnels WHERE id=?',(d['id'],))\n out=r\nprint(json.dumps(out,ensure_ascii=False))"
+    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
     code=code.replace("out={'items':out,'services':services}","out={'items':out,'services':services,'app_version':getattr(t,'APP_VERSION','نامشخص')}",1)
     guarded_code="import json\ntry:\n exec(compile("+repr(code)+", '<tunnelmgr-remote>', 'exec'))\nexcept Exception as exc:\n print(json.dumps({'error':str(exc)},ensure_ascii=False))"
     remote="runuser -u tunnelmgr -- env TUNNELMGR_HOME=/var/lib/tunnelmgr /usr/bin/python3 -c "+shlex.quote(guarded_code)
-    proc=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=90)
+    proc=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=180)
     if proc.returncode:raise RuntimeError((proc.stderr or proc.stdout)[-1600:])
     try:result=json.loads(proc.stdout)
     except json.JSONDecodeError as e:raise RuntimeError("invalid response from remote tunnel manager") from e
@@ -626,8 +626,14 @@ def server_remote(server,payload):
 
 def install_remote(server):
     root=pathlib.Path(__file__).resolve().parents[1]
+    stats=privileged({'op':'haproxy-stats','id':'forwards','action':'read'})
+    if not stats.get('ok'):raise RuntimeError(stats.get('error','Could not read HAProxy statistics configuration'))
     with tempfile.NamedTemporaryFile(suffix=".tgz") as bundle:
         with tarfile.open(bundle.name,"w:gz") as tf:
+            import io
+            content=json.dumps(stats['config']).encode()
+            member=tarfile.TarInfo('runtime/haproxy-stats.json');member.size=len(content);member.mode=0o600
+            tf.addfile(member,io.BytesIO(content))
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
@@ -913,7 +919,7 @@ def create_instance(data):
                 if old and str(ipaddress.ip_interface(old).ip) in pair:raise ValueError("tunnel IP already assigned to another managed instance")
     result=privileged({"op":"create","id":ident,"config":config})
     if not result.get("ok"):raise RuntimeError(result.get("error",result.get("output","create failed")))
-    metadata={k:v for k,v in config.items() if k!="secret_file"}
+    metadata={k:v for k,v in config.items() if k!='replace'}
     if secret_managed:metadata["secret_managed"]=True
     save(ident,mode,{"manager":"Backhaul",**metadata})
     return {"id":ident,"kind":"backhaul","mode":mode,"carrier":carrier,"tun_local":config.get("tun_local"),"tun_remote":config.get("tun_remote")}
@@ -1082,13 +1088,22 @@ def create_native_pair(data):
         previous={}
         if action=='update':
             previous={sid:{'id':ident,'transport':kind,'mode':existing[sid].get('mode','server'),**native_profile_config(sid,ident,servers)} for sid in (a_id,b_id)}
-        interface,local,peer=allocate_pair_resources([snapshots[a_id],snapshots[b_id]])
         config_a=dict(config_a);config_b=dict(config_b)
-        config_a['interface']=interface;config_b['interface']=interface
         address_kinds={'gre','gretap','ipip','gre-fou','ipip-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp'}
-        if kind in address_kinds:
-            config_a['inner_local']=local;config_a['inner_peer']=peer
-            config_b['inner_local']=peer;config_b['inner_peer']=local
+        if action=='create':
+            interface,local,peer=allocate_pair_resources([snapshots[a_id],snapshots[b_id]])
+            config_a['interface']=interface;config_b['interface']=interface
+            if kind in address_kinds:
+                config_a['inner_local']=local;config_a['inner_peer']=peer
+                config_b['inner_local']=peer;config_b['inner_peer']=local
+        else:
+            # Recreate the devices, keeping their saved identity/addresses unless
+            # the edit explicitly changes them. Routing and HAProxy reference them.
+            for sid,cfg in ((a_id,config_a),(b_id,config_b)):
+                cfg['interface']=cfg.get('interface') or previous[sid]['interface']
+                if kind in address_kinds:
+                    for field in ('inner_local','inner_peer'):cfg[field]=cfg.get(field) or previous[sid].get(field)
+            interface=config_a['interface']
         if kind in ('ipsec-ikev2','ipsec-esp-udp'):
             configured_psks={cfg.get('psk') for cfg in (config_a,config_b) if cfg.get('psk')}
             if len(configured_psks)>1:raise ValueError('Both IPsec peers must use the same shared PSK.')
@@ -1136,6 +1151,12 @@ def create_native_pair(data):
             if roles!={'client','server'}:
                 raise ValueError('IPsec peers must have one client and one server role.')
             endpoints=tuple(sorted(endpoints,key=lambda endpoint:endpoint[1].get('role')=='client'))
+        if action=='update':
+            result=rebuild_tunnel_pair(ident,[a_id,b_id],dict(endpoints),'update')
+            result.update(transport=kind,action='update',interface=interface,
+                          inner_local=config_a.get('inner_local'),inner_peer=config_a.get('inner_peer'))
+            if kind=='l2tpv3' and config_a.get('encap')=='udp':result['udp_ports']=[config_a['udp_sport'],config_a['udp_dport']]
+            return result
         attempted=[]
         try:
             for sid,config in endpoints:
@@ -1192,6 +1213,7 @@ def create_wireguard_pair(data):
             items=snapshots[sid].get("items",[])
         existing[sid]=items
         for item in items:
+            if data.get("action")=="update" and item.get("id")==ident:continue
             meta=item.get("metadata",{})
             for field in ("tun_local","tun_remote"):
                 old=meta.get(field)
@@ -1211,20 +1233,8 @@ def create_wireguard_pair(data):
         base={k:v for k,v in data.items() if k in ("mtu","keepalive")}
         config_a={**old[a_id],"id":ident,"transport":"wireguard","mode":"peer","interface":interface_a,"outer_peer":hosts[b_id],"inner_local":str(local),"inner_peer":str(peer),"listen_port":port,"endpoint_port":port,**base}
         config_b={**old[b_id],"id":ident,"transport":"wireguard","mode":"peer","interface":interface_b,"outer_peer":hosts[a_id],"inner_local":str(peer),"inner_peer":str(local),"listen_port":port,"endpoint_port":port,**base}
-        updates=[(a_id,config_a),(b_id,config_b)];done=[]
-        try:
-            for sid,cfg in updates:
-                if sid=="local":update_tunnel(cfg)
-                else:server_remote(servers[sid],{"op":"update","data":cfg})
-                done.append(sid)
-        except Exception:
-            for sid in reversed(done):
-                try:
-                    if sid=="local":update_tunnel(old[sid])
-                    else:server_remote(servers[sid],{"op":"update","data":old[sid]})
-                except Exception:pass
-            raise
-        return {"ok":True,"id":ident,"transport":"wireguard","servers":[a_id,b_id],"updated":True,"udp_port":port}
+        result=rebuild_tunnel_pair(ident,[a_id,b_id],{a_id:config_a,b_id:config_b},'update')
+        return {**result,'transport':'wireguard','updated':True,'udp_port':port}
     if exists_a or exists_b:raise ValueError("tunnel id already exists on one of the selected servers")
     allocated_interface=allocate_pair_interface([snapshots[a_id],snapshots[b_id]],prefix="wg")
     wg=shutil.which("wg")
@@ -1325,6 +1335,9 @@ def create_openvpn_pair(data):
                 "port":port,"mtu":mtu,"ca_cert":common["ca_cert"],"cert":own["cert"],"private_key_pem":own["private_key_pem"]}
     cfg_a=endpoint(a_id,role_a,local,peer,host_a,host_b,data.get("interface","tun0"),role_b)
     cfg_b=endpoint(b_id,role_b,peer,local,host_b,host_a,data.get("peer_interface","tun1"),role_a)
+    if updating:
+        result=rebuild_tunnel_pair(ident,[a_id,b_id],{a_id:cfg_a,b_id:cfg_b},'update')
+        return {**result,'transport':'openvpn','udp_port':port,'updated':True}
     actions=[(a_id,cfg_a),(b_id,cfg_b)];done=[]
     try:
         for sid,cfg in actions:
@@ -1456,94 +1469,85 @@ def tunnel_config(ident):
         if not result.get("config"):raise RuntimeError(result.get("error","could not read tunnel profile"))
         return {"id":ident,"transport":result["config"].get("kind"),"mode":item["mode"],**result["config"]}
     secret_kind="psk" if meta.get("encapsulation")=="ipx" else "token"
-    return {"id":ident,"transport":"backhaul","mode":item["mode"],**meta,"secret_file":meta.get("secret_file",f"/etc/backhaul/secrets/{ident}.{secret_kind}"),"secret_managed":meta.get("secret_managed",False)}
+    secret_file=meta.get('secret_file')
+    if not secret_file:
+        saved=privileged({'op':'backhaul-secret-path','id':ident})
+        if not saved.get('ok'):raise RuntimeError(saved.get('error','Could not preserve the owned Backhaul secret'))
+        secret_file=saved['secret_file']
+    return {"id":ident,"transport":"backhaul","mode":item["mode"],**meta,"secret_file":secret_file,"secret_managed":meta.get("secret_managed",False)}
+
+def normalize_rebuild_config(ident,data,previous):
+    if not isinstance(data,dict) or data.get('id',ident)!=ident:raise ValueError('Tunnel configuration ID does not match')
+    transport=data.get('transport') or data.get('kind') or previous.get('transport')
+    if (transport=='backhaul')!=(previous.get('transport')=='backhaul'):
+        raise ValueError('Changing between Backhaul and native tunnel types is not supported')
+    if transport=='backhaul':
+        allowed={'mode','listen','peer','tun_name','tun_local','tun_remote','tun_mtu','health_port','secret_file','carrier','ports','pool','accept_udp','proxy_protocol','edge','source_bind','cert','key','ca','sni','encapsulation','ipx_profile','local_ip','peer_ip','interface','spoof_source','expected_peer_source'}
+        config={k:v for k,v in data.items() if k in allowed}
+        config.setdefault('mode',previous.get('mode','server'))
+        config.setdefault('secret_file',previous.get('secret_file'))
+        if config.get('carrier','tun')=='tun' and config.get('encapsulation','tcp')=='ipx':
+            for key in ('tun_local','tun_remote','health_port'):config.pop(key,None)
+        return {'id':ident,'transport':transport,'secret_managed':previous.get('secret_managed',False),**config}
+    return {**data,'id':ident,'transport':transport,'kind':transport,'mode':data.get('mode',previous.get('mode','server'))}
+
+def validate_tunnel_config(data):
+    supported={'backhaul','gre','gretap','geneve','vxlan','ipip','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn'}
+    if data.get('transport') not in supported:raise ValueError('This tunnel type does not support rebuilding')
+    requested=[]
+    for field in ('inner_local','inner_peer','tun_local','tun_remote'):
+        if data.get(field):requested.append(ipaddress.ip_interface(data[field]).ip)
+    for item in rows():
+        if item['id']==data['id']:continue
+        for field in ('tun_local','tun_remote'):
+            value=item.get('metadata',{}).get(field)
+            if value and ipaddress.ip_interface(value).ip in requested:
+                raise ValueError('Internal address already belongs to tunnel '+item['id'])
+    if data.get('transport')=='backhaul':
+        config={k:v for k,v in data.items() if k not in ('id','transport','secret_managed')}
+        result=privileged({'op':'validate-backhaul','id':data['id'],'config':{**config,'replace':True}})
+    else:
+        config={k:v for k,v in data.items() if k not in ('id','transport','mode','manager','native_profile')}
+        result=privileged({'op':'profile','group':'network','id':'native-'+data['id'],'action':'validate','config':config})
+    if not result.get('ok'):raise RuntimeError(result.get('error') or result.get('output') or 'Tunnel preflight failed')
+    return result
+
+def remove_tunnel_endpoint(ident):
+    item=find(ident)
+    if not item:return {'ok':True,'already_removed':True}
+    profile=item.get('metadata',{}).get('native_profile')
+    result=privileged({'op':'profile','group':'network','id':profile,'action':'delete'} if profile else {'op':'delete','id':ident},timeout=150)
+    if not result.get('ok'):raise RuntimeError(result.get('error') or result.get('output') or 'Tunnel cleanup failed')
+    with db() as connection:connection.execute('DELETE FROM tunnels WHERE id=?',(ident,))
+    return {'ok':True,'id':ident}
+
+def rebuild_tunnel_pair(ident,server_ids=None,configs=None,operation='restart'):
+    import tunnel_lifecycle
+    if server_ids is None:
+        with MONITOR_LOCK:statuses=list(MONITOR_SERVERS)
+        server_ids=(['local'] if find(ident) else [])+[s['id'] for s in statuses if s.get('id')!='local' and any(t.get('id')==ident for t in s.get('tunnels',[]))]
+    return tunnel_lifecycle.rebuild(sys.modules[__name__],ident,server_ids,configs,operation)
 
 def restart_ipsec_pair(ident):
-    """Restart UDP-encapsulated IPsec peers responder-first to avoid a teardown race."""
-    endpoints=[]
-    local=find(ident)
-    if local:
-        endpoints.append(("local",local,tunnel_config(ident)))
-    servers={s["id"]:s for s in server_rows()}
-    for sid,srv in servers.items():
-        remote_items=server_remote(srv,{"op":"list"}).get("items",[])
-        remote=next((item for item in remote_items if item.get("id")==ident),None)
-        if remote:
-            endpoints.append((sid,remote,server_remote(srv,{"op":"config","id":ident})))
-    endpoints=[e for e in endpoints if e[2].get("transport")=="ipsec-esp-udp"]
-    if len(endpoints)<2:
-        raise RuntimeError("Both IPsec-over-UDP peers must be reachable for a coordinated restart")
-    srvmap=servers
-    def operate(endpoint,action):
-        sid,item,cfg=endpoint
-        profile=item.get("metadata",{}).get("native_profile")
-        if sid=="local":
-            if not profile:raise RuntimeError("Local IPsec profile is missing")
-            return privileged({"op":"profile","group":"network","id":profile,"action":action})
-        return server_remote(srvmap[sid],{"op":"operate","id":ident,"action":action})
-    with ThreadPoolExecutor(max_workers=len(endpoints)) as pool:
-        stopped=list(pool.map(lambda endpoint:operate(endpoint,"stop"),endpoints))
-    failures=[r.get("error","stop failed") for r in stopped if not r.get("ok")]
-    if failures:raise RuntimeError("Could not stop both IPsec peers: "+"; ".join(failures))
-    ordered=sorted(endpoints,key=lambda e:0 if e[2].get("role")=="server" else 1)
-    started=[]
-    for endpoint in ordered:
-        result=operate(endpoint,"start")
-        started.append(endpoint[0])
-        if not result.get("ok"):
-            raise RuntimeError("IPsec restart failed on "+endpoint[0]+": "+result.get("error","start failed"))
-    return {"ok":True,"id":ident,"operation":"restart","servers":[e[0] for e in ordered],"startup_order":[e[2].get("role") for e in ordered]}
+    return rebuild_tunnel_pair(ident)
 
 def update_tunnel(data):
-    ident=data.get("id") if isinstance(data,dict) else None
-    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError("invalid tunnel id")
-    old=find(ident)
-    if not old:raise ValueError("unknown tunnel")
-    old_profile=old["metadata"].get("native_profile")
-    transport=data.get("transport")
-    if transport=="backhaul":
-        if old_profile:raise ValueError("Changing between Backhaul and native tunnel types is not supported in-place")
-        mode=data.get("mode",old["mode"])
-        if mode not in ("server","client"):raise ValueError("mode must be server or client")
-        config={k:v for k,v in data.items() if k not in ("id","direction","server_id","transport","secret_managed","manager","native_profile")}
-        config["replace"]=True
-        result=privileged({"op":"create","id":ident,"config":config})
-        if not result.get("ok"):raise RuntimeError(result.get("error",result.get("output","tunnel update failed")))
-        metadata={k:v for k,v in config.items() if k not in ("secret_file","replace")}
-        if metadata.get('tun_name'):metadata['interface']=metadata['tun_name']
-        if old["metadata"].get("secret_managed"):metadata["secret_managed"]=True
-        save(ident,mode,{"manager":"Backhaul",**metadata})
-        return {"id":ident,"ok":True}
-    if not old_profile:raise ValueError("Changing between Backhaul and native tunnel types is not supported in-place")
-    profile=old_profile
-    previous=privileged({"op":"profile","group":"network","id":profile,"action":"read"}).get("config")
-    if not previous:raise RuntimeError("could not read current native tunnel profile")
-    fields={"interface","outer_local","outer_peer","inner_local","inner_peer","key","vni","port","erspan_index","erspan_key","mirror_interface","fou_port","tunnel_id","peer_tunnel_id","session_id","peer_session_id","encap","udp_sport","udp_dport","role","local_id","remote_id","psk","spi","peer_spi","enc_key","auth_key","peer_enc_key","peer_auth_key","private_key","peer_public_key","preshared_key","listen_port","endpoint_port","keepalive","common_name","peer_common_name","ca_cert","cert","private_key_pem","mtu"}
-    config={"kind":transport,**{k:v for k,v in data.items() if k in fields}}
+    ident=data.get('id') if isinstance(data,dict) else None
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('invalid tunnel id')
+    previous=tunnel_config(ident)
+    config=normalize_rebuild_config(ident,data,previous)
+    validate_tunnel_config(config)
     try:
-        result=privileged({"op":"profile","group":"network","id":profile,"action":"stop"})
-        if not result.get("ok"):raise RuntimeError(result.get("error","could not stop tunnel"))
-        result=privileged({"op":"profile","group":"network","id":profile,"action":"update","previous":previous,"config":config})
-        if not result.get("ok"):raise RuntimeError(result.get("error","could not update tunnel profile"))
-        result=privileged({"op":"profile","group":"network","id":profile,"action":"start"})
-        if not result.get("ok"):raise RuntimeError(result.get("error","could not restart tunnel"))
-    except Exception:
+        remove_tunnel_endpoint(ident)
+        return create_instance(config) if config['transport']=='backhaul' else create_native(config)
+    except Exception as error:
         try:
-            privileged({"op":"profile","group":"network","id":profile,"action":"stop"})
-            current=privileged({"op":"profile","group":"network","id":profile,"action":"read"}).get("config")
-            if current and current!=previous:
-                privileged({"op":"profile","group":"network","id":profile,"action":"update","previous":current,"config":previous})
-            privileged({"op":"profile","group":"network","id":profile,"action":"start"})
-        except Exception:pass
-        raise
-    mode=data.get("mode",old["mode"])
-    local=config.get("inner_local");peer=config.get("inner_peer")
-    if transport=="sit-6to4":
-        def six(ip):
-            value=int(ipaddress.IPv4Address(ip));return "2002:%x:%x::1/16"%((value>>16)&65535,value&65535)
-        local=six(config["outer_local"]);peer=six(config["outer_peer"])
-    save(ident,mode,{"transport":transport,"interface":config.get("interface"),"tun_name":config.get("interface"),"tun_local":local,"tun_remote":peer,"outer_local":config.get("outer_local"),"outer_peer":config.get("outer_peer"),"mtu":config.get("mtu"),"native_profile":profile})
-    return {"id":ident,"ok":True}
+            remove_tunnel_endpoint(ident)
+            old=normalize_rebuild_config(ident,previous,previous)
+            create_instance(old) if old['transport']=='backhaul' else create_native(old)
+        except Exception as rollback:
+            raise RuntimeError(str(error)+' · بازگردانی سمت قبلی کامل نشد: '+str(rollback)) from error
+        raise RuntimeError(str(error)+' · سمت قبلی بازگردانده شد.') from error
 
 def _replace_host_value(value,old,new):
     if not isinstance(value,str):return value,False
@@ -1931,7 +1935,10 @@ def server(host,port):
                 if role not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})
                 srv=next((x for x in server_rows() if x["id"]==remote_op[1]),None)
                 if not srv:return self.send(404,{"error":"server not found"})
-                try:return self.send(200,server_remote(srv,{"op":"operate","id":remote_op[2],"action":remote_op[3]}))
+                try:
+                    if remote_op[3]=='restart':
+                        data=self.body();return self.send(200,rebuild_tunnel_pair(remote_op[2],data.get('servers')))
+                    return self.send(200,server_remote(srv,{"op":"operate","id":remote_op[2],"action":remote_op[3]}))
                 except Exception as e:return self.send(400,{"error":str(e)})
             if self.path=="/api/v1/servers":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
@@ -2025,7 +2032,7 @@ def server(host,port):
                 except Exception as e:return self.send(502,{"error":str(e)})
             operator_action=re.fullmatch(r"/api/v1/tunnels/[a-z0-9_-]+/(start|stop|restart|health|delete)",self.path)
             speedtest_action=re.fullmatch(r"/api/v1/tunnels/([a-z0-9_-]+)/speedtest",self.path)
-            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
+            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/rebuild","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
             if role!="admin" and (self.path!="/api/v1/mesh/plan" and not (role=="operator" and (operator_action or operator_create))):
                 return self.send(403,{"error":"insufficient permissions"})
             try:
@@ -2077,6 +2084,9 @@ def server(host,port):
                     data=self.body()
                     return self.send(200,recommended_tunnel_mtu(data.get("server_a"),data.get("server_b"),data.get("host_a"),data.get("host_b"),data.get("transport")))
                 if self.path=="/api/v1/tunnels/backhaul":return self.send(201,create_instance(self.body()))
+                if self.path=="/api/v1/tunnels/rebuild":
+                    data=self.body()
+                    return self.send(200,rebuild_tunnel_pair(data.get('id'),data.get('servers'),data.get('configs'),data.get('operation','restart')))
                 if self.path=="/api/v1/tunnels/native-pair":
                     data=self.body();return self.send(200 if data.get("action")=="update" else 201,create_native_pair(data))
                 if self.path=="/api/v1/tunnels/native":return self.send(201,create_native(self.body()))
@@ -2091,6 +2101,8 @@ def server(host,port):
                 if len(bits)==5 and bits[:3]==["api","v1","tunnels"] and bits[4] in ("start","stop","restart","health","delete"):
                     ident,op=bits[3],bits[4]
                     if not ID.fullmatch(ident):return self.send(400,{"error":"invalid id"})
+                    if op=='restart':
+                        data=self.body();return self.send(200,rebuild_tunnel_pair(ident,data.get('servers')))
                     if not find(ident):return self.send(404,{"error":"not found"})
                     item=find(ident)
                     native=item["metadata"].get("native_profile")
