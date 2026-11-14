@@ -1,3 +1,8 @@
+## avaTUN 0.2.24
+
+- Install and remove table 220 inner-peer routes for managed IPsec profiles so unbound traffic selects the tunnel source address and matches XFRM policies.
+- Verify the route fix with Finland↔Germany ESP-over-UDP and three successful pings in each direction.
+
 ## avaTUN 0.2.23
 
 - Automatically allocate VXLAN/Geneve interfaces, conflict-free private /30 addresses, unique VNIs and UDP ports after inspecting both servers.

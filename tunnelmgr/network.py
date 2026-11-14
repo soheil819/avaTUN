@@ -351,11 +351,12 @@ def apply(profile, up, profile_name=None):
     elif kind in ('ipsec-ikev2','ipsec-esp-udp'):
         name=iface(profile['interface']);safe=re.sub(r'[^a-zA-Z0-9_-]','_',name)
         conf=pathlib.Path('/etc/swanctl/conf.d/tunnelmgr-'+safe+'.conf')
+        local=ip.IPv4Address(profile['inner_local'].split('/')[0]);peer=ip.IPv4Address(profile['inner_peer'].split('/')[0])
         if not up:
             subprocess.run(['/usr/sbin/swanctl','--terminate','--ike',safe],capture_output=True,timeout=15)
+            subprocess.run(['/usr/sbin/ip','-4','route','del',str(peer)+'/32','table','220'],capture_output=True)
             subprocess.run(['/usr/sbin/ip','address','del',str(ip.IPv4Interface(profile['inner_local']).ip)+'/32','dev','lo'],capture_output=True)
             return
-        local=ip.IPv4Address(profile['inner_local'].split('/')[0]);peer=ip.IPv4Address(profile['inner_peer'].split('/')[0])
         li=str(profile.get('local_id') or profile['outer_local']);ri=str(profile.get('remote_id') or profile['outer_peer'])
         def q(v):return '"'+str(v).replace('\\','\\\\').replace('"','\\"')+'"'
         udp='encap = yes\n ' if kind=='ipsec-esp-udp' else ''
@@ -376,6 +377,15 @@ def apply(profile, up, profile_name=None):
             if any(line.split(':',1)[0].strip()=='220' for line in rules.stdout.splitlines()):raise RuntimeError('Routing rule priority 220 is used by another table')
             subprocess.run(['/usr/sbin/ip','-4','rule','add','pref','220','lookup','220'],check=True)
         subprocess.run(['/usr/sbin/ip','address','replace',str(local)+'/32','dev','lo'],check=True)
+        # Select the inner source address for unbound traffic. Without this
+        # host route, Linux chooses the public address, misses the XFRM
+        # selector, and sends the cleartext packet to the default gateway.
+        outer_route=subprocess.run(['/usr/sbin/ip','-4','-json','route','get',str(profile['outer_peer'])],capture_output=True,text=True,check=True)
+        outer_path=json.loads(outer_route.stdout)[0]
+        route_args=['-4','route','replace',str(peer)+'/32']
+        if outer_path.get('gateway'):route_args+=['via',outer_path['gateway']]
+        route_args+=['dev',iface(outer_path['dev']),'src',str(local),'table','220']
+        run(*route_args)
         if profile.get('role')=='client':run_swanctl('--initiate','--ike',safe,'--child',safe,timeout=45)
     elif kind=='esp':
         name=iface(profile['interface'])
