@@ -1,3 +1,8 @@
+## avaTUN 0.2.27 · رنگ‌بندی گسترده‌تر تم‌ها
+
+- Extend the selected palette across the page background, navigation, cards, forms, notices, tables and mesh canvas.
+- Keep status colors and readable foreground text stable while tinting each section with the selected theme.
+
 ## avaTUN 0.2.26 · بازطراحی تم‌های رنگی
 
 - Replace the broad gradient theme override with eight restrained accent palettes; keep panel surfaces, navigation layout and neutral actions consistent.
