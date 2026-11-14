@@ -2,6 +2,7 @@
 
 - Extend the selected palette across the page background, navigation, cards, forms, notices, tables and mesh canvas.
 - Keep status colors and readable foreground text stable while tinting each section with the selected theme.
+- Use the Telegram HTML widget console for status and navigation screens, with native text fallback for unsupported chats.
 
 ## avaTUN 0.2.26 · بازطراحی تم‌های رنگی
 

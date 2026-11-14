@@ -92,6 +92,14 @@ class ConsoleMixin:
         if page=='resources':
             with _screen_locks[user_id]:
                 return self.show_resource_screen(user_id,page_index,server_id,selected)
+        # Status and navigation screens use the HTML control widget. Forms
+        # and free-form prompts continue to use the native text console, while
+        # widget delivery keeps its existing per-chat fallback.
+        if page in ('overview','servers','server','tunnels','tunnel','forward_servers',
+                    'forwards','forward','report','audit','update') and hasattr(self, 'show_control_widget'):
+            with _screen_locks[user_id]:
+                self.leave_resource_screen(user_id)
+                return self.show_control_widget(user_id, page, page_index, server_id, selected, message)
         state = self.console_state(user_id,page,page_index,server_id,selected)
         if message:state['message'] = message
         text, keyboard = render(state, lambda label, action, **payload:self.button(user_id,label,action,**payload))

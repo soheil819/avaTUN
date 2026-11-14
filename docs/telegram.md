@@ -7,10 +7,10 @@ are sufficient. No inbound Telegram port or webhook is needed.
 
 ## Interface and behavior
 
-The main interface uses Telegram's native HTML text and inline keyboards. It
-edits a single console message when navigating, with a compact home, named
+The main interface uses a live HTML widget with Telegram-native theme colors.
+It edits one widget message when navigating, with a compact home, named
 server/tunnel buttons, contextual actions, pagination, and back/home/refresh
-controls. `/start` opens a fresh console and closes an unfinished form.
+controls. `/start` opens the widget console and closes an unfinished form.
 
 - **Servers:** connection, service/version, resource summary, and links to that
   server's tunnels and resource page.
@@ -41,9 +41,11 @@ resource alerts above 90% for 120 seconds (clearing below 85%), recovery message
 and a daily report at 09:00 Asia/Tehran. Alerts remain separate messages and do
 not replace the active console.
 
-Only the resources screen attempts HTML widget delivery. The rest of the bot
-keeps native text and inline keyboards. `/hardware` opens resources; `/widgets`
-also opens resources and retries HTML delivery immediately.
+Status and navigation screens use the HTML widget console. Forms, alerts, and
+free-form prompts keep native text and inline keyboards. If Telegram rejects
+HTML widgets for a chat, the console falls back to the same native text menu
+and retries widget delivery after five minutes. `/hardware` opens the live
+resources widget; `/widgets` retries widget delivery immediately.
 
 ## Configuration
 

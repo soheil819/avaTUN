@@ -390,7 +390,7 @@ const TW=window.TelegramWidget,$=id=>document.getElementById(id);let s={p:0,n:1,
 CONTROL_WIDGET_HTML = r'''<!doctype html><html><body><style>
 body{margin:0;padding:10px 12px;color:var(--tg-theme-text-color);font:14px/1.4 sans-serif}.head,.row,.foot{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{font-size:16px;font-weight:700}.hint,.sub{font-size:12px;color:var(--tg-theme-hint-color)}.nav,.actions{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}.nav button,.actions button,.foot button,.item button{border:0;border-radius:8px;padding:6px 9px;color:var(--tg-theme-button-text-color);background:var(--tg-theme-button-color);font:inherit}.nav button{font-size:11px}.nav button.active{filter:brightness(.78)}.list{display:grid;gap:6px;margin:8px 0}.item{background:var(--tg-theme-secondary-bg-color);border-radius:10px;padding:9px}.name{font-weight:700;overflow-wrap:anywhere}.sub{margin-top:3px;overflow-wrap:anywhere}.badge{font-size:11px;white-space:nowrap}.up{color:#25a879}.down{color:#e05d66}.unknown{color:#d99b2b}.foot{margin-top:8px}.foot button:disabled{opacity:.45}.message{min-height:18px;margin-top:5px;color:var(--tg-theme-hint-color);font-size:12px}
 </style><div class="head"><div class="title" id="title">avaTUN</div><span class="hint" id="summary"></span></div><div class="nav" id="nav"></div><div class="list" id="list"></div><div class="actions" id="actions"></div><div class="foot"><span class="hint" id="page"></span><div><button id="prev">قبلی</button> <button id="next">بعدی</button> <button id="refresh">↻</button></div></div><div class="message" id="message"></div><script>
-const TW=window.TelegramWidget,$=x=>document.getElementById(x);let s={page:'overview',role:'viewer',p:0,n:1,rows:[],actions:[]},busy=false;const tabs=[['overview','نمای کلی'],['servers','سرورها'],['tunnels','تونل‌ها'],['resources','منابع'],['forwards','فوروارد'],['report','گزارش'],['audit','عملیات'],['update','به‌روزرسانی']];function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function query(q){if(!TW||busy)return;busy=true;$('message').textContent='در حال دریافت…';TW.request(q).then(a=>{if(a?.result){const next=JSON.parse(a.result);if(next&&typeof next==='object')s=next}draw()}).catch(e=>{$('message').textContent=e?.code==='TIMEOUT'?'پاسخ سرور دیر رسید؛ دوباره بزن.':'اتصال موقتاً برقرار نیست'}).finally(()=>{busy=false})}function draw(){const page=s.page||'overview';$('title').textContent=s.title||'avaTUN';$('summary').textContent=s.summary||'';$('nav').innerHTML=tabs.filter(x=>!['forwards','audit','update'].includes(x[0])||s.role==='admin').map(x=>'<button data-q="nav:'+x[0]+'" class="'+(x[0]===page?'active':'')+'">'+x[1]+'</button>').join('');$('list').innerHTML=(s.rows||[]).map(x=>'<div class="item"><div class="row"><span class="name">'+esc(x.title)+'</span>'+(x.state?'<span class="badge '+esc(x.state)+'">'+esc(x.badge||'')+'</span>':'')+'</div>'+(x.lines||[]).map(y=>'<div class="sub">'+esc(y)+'</div>').join('')+(x.query?'<div class="actions"><button data-q="'+esc(x.query)+'">'+esc(x.button||'جزئیات')+'</button></div>':'')+'</div>').join('')||'<div class="item">داده‌ای برای نمایش نیست.</div>';$('actions').innerHTML=(s.actions||[]).map(x=>'<button data-q="'+esc(x.query)+'">'+esc(x.label)+'</button>').join('');$('page').textContent=s.n>1?((Number(s.p||0)+1)+' از '+s.n):'';$('prev').disabled=busy||Number(s.p||0)<=0;$('next').disabled=busy||Number(s.p||0)>=Number(s.n||1)-1;$('message').textContent=s.message||''}function askPage(p){query('page:'+s.page+':'+p)}for(const id of ['nav','list','actions'])$(id).onclick=e=>{const b=e.target.closest('[data-q]');if(b)query(b.dataset.q)};$('prev').onclick=()=>askPage(Math.max(0,Number(s.p||0)-1));$('next').onclick=()=>askPage(Math.min(Number(s.n||1)-1,Number(s.p||0)+1));$('refresh').onclick=()=>query('refresh');try{if(TW?.chatData)s=JSON.parse(TW.chatData)}catch{}draw();if(TW){TW.onEvent('chatDataChanged',()=>{try{s=JSON.parse(TW.chatData);draw()}catch{}});query('refresh');setInterval(()=>{if(TW.isActive&&!busy)query('refresh')},20000)}
+const TW=window.TelegramWidget,$=x=>document.getElementById(x);let s={page:'overview',role:'viewer',p:0,n:1,rows:[],actions:[]},busy=false;const tabs=[['overview','نمای کلی'],['servers','سرورها'],['tunnels','تونل‌ها'],['resources','منابع'],['forward_servers','فوروارد'],['report','گزارش'],['audit','عملیات'],['update','به‌روزرسانی']];function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function query(q){if(!TW||busy)return;busy=true;$('message').textContent='در حال دریافت…';TW.request(q).then(a=>{if(a?.result){const next=JSON.parse(a.result);if(next&&typeof next==='object')s=next}draw()}).catch(e=>{$('message').textContent=e?.code==='TIMEOUT'?'پاسخ سرور دیر رسید؛ دوباره بزن.':'اتصال موقتاً برقرار نیست'}).finally(()=>{busy=false})}function draw(){const page=s.page||'overview';$('title').textContent=s.title||'avaTUN';$('summary').textContent=s.summary||'';$('nav').innerHTML=tabs.filter(x=>!['forward_servers','audit','update'].includes(x[0])||s.role==='admin').map(x=>'<button data-q="nav:'+x[0]+'" class="'+(x[0]===page?'active':'')+'">'+x[1]+'</button>').join('');$('list').innerHTML=(s.rows||[]).map(x=>'<div class="item"><div class="row"><span class="name">'+esc(x.title)+'</span>'+(x.state?'<span class="badge '+esc(x.state)+'">'+esc(x.badge||'')+'</span>':'')+'</div>'+(x.lines||[]).map(y=>'<div class="sub">'+esc(y)+'</div>').join('')+(x.query?'<div class="actions"><button data-q="'+esc(x.query)+'">'+esc(x.button||'جزئیات')+'</button></div>':'')+'</div>').join('')||'<div class="item">داده‌ای برای نمایش نیست.</div>';$('actions').innerHTML=(s.actions||[]).map(x=>'<button data-q="'+esc(x.query)+'">'+esc(x.label)+'</button>').join('');$('page').textContent=s.n>1?((Number(s.p||0)+1)+' از '+s.n):'';$('prev').disabled=busy||Number(s.p||0)<=0;$('next').disabled=busy||Number(s.p||0)>=Number(s.n||1)-1;$('message').textContent=s.message||''}function askPage(p){query('page:'+s.page+':'+p)}for(const id of ['nav','list','actions'])$(id).onclick=e=>{const b=e.target.closest('[data-q]');if(b)query(b.dataset.q)};$('prev').onclick=()=>askPage(Math.max(0,Number(s.p||0)-1));$('next').onclick=()=>askPage(Math.min(Number(s.n||1)-1,Number(s.p||0)+1));$('refresh').onclick=()=>query('refresh');try{if(TW?.chatData)s=JSON.parse(TW.chatData)}catch{}draw();if(TW){TW.onEvent('chatDataChanged',()=>{try{s=JSON.parse(TW.chatData);draw()}catch{}});query('refresh');setInterval(()=>{if(TW.isActive&&!busy)query('refresh')},20000)}
 </script></body></html>'''
 
 
@@ -654,7 +654,7 @@ class Bot(ResourceMixin, ConsoleMixin):
 
     def control_widget_state(self, user_id, page='overview', page_index=0, server_id='all', selected=''):
         role = self.users.get(user_id, 'viewer')
-        page = page if page in ('overview','servers','server','tunnels','tunnel','resources','forwards','forward','report','audit','update','confirm') else 'overview'
+        page = page if page in ('overview','servers','server','tunnels','tunnel','resources','forward_servers','forwards','forward','report','audit','update','confirm') else 'overview'
         snapshot = self.panel.snapshot()
         statuses = {str(x.get('id')): x for x in snapshot.get('statuses', [])}
         resources = {str(x.get('id')): x for x in snapshot.get('resources', [])}
@@ -721,6 +721,13 @@ class Bot(ResourceMixin, ConsoleMixin):
             state['actions']=[{'label':'بررسی دوباره','query':f'refresh:tunnel:0:local:{selected}'}]
             if role=='admin' and len(endpoints)>=2:
                 state['actions'] += [{'label':label,'query':f'confirm:{op}:{selected}'} for label,op in (('▶ شروع','start'),('↻ راه‌اندازی مجدد','restart'),('⏸ توقف','stop'))]
+        elif page == 'forward_servers':
+            if role!='admin':raise PanelError('مدیریت فورواردر فقط برای مدیر فعال است.')
+            servers=[{'id':'local','name':'سرور مرکزی','host':'پنل مرکزی'},*snapshot.get('servers',[])]
+            visible=pages(servers,page_index,'فوروارد · انتخاب سرور')
+            for item in visible:
+                ident=str(item.get('id',''))
+                state['rows'].append(row(item.get('name') or ident,[item.get('host') or '—'],'', '', 'server:'+ident, 'بازکردن'))
         elif page == 'forwards':
             if role!='admin':raise PanelError('مدیریت فورواردر فقط برای مدیر فعال است.')
             result=self.panel.request('/api/v1/forwards?server_id='+urllib.parse.quote(server_id,safe=''));entries=[x for x in result.get('items',[]) if x.get('server_id','local')==server_id]
@@ -858,8 +865,10 @@ class Bot(ResourceMixin, ConsoleMixin):
             self.state.audit(user_id,audit_action,target,'failed')
             self.send(user_id,'⚠️ عملیات کامل نشد.\n'+self.scrub(error)[:400])
 
-    def show_control_widget(self, user_id, page='overview', page_index=0, server_id='all', selected=''):
+    def show_control_widget(self, user_id, page='overview', page_index=0, server_id='all', selected='', message=''):
         state=self.control_widget_state(user_id,page,page_index,server_id,selected)
+        if message:
+            state['message']=message
         delivery_key = self.widget_delivery_key(user_id)
         delivery = self.state.get(delivery_key) or {}
         if delivery.get('retry_at', 0) > time.time():
@@ -875,12 +884,19 @@ class Bot(ResourceMixin, ConsoleMixin):
                     'chat_data':widget_chat_data(state)})
                 self.widget_views[(user_id,user_id,int(saved['message_id']))]={**state,'expires':time.time()+1800}
                 self.state.put(f'control-view:{user_id}:{int(saved["message_id"])}',{**state,'expires':time.time()+1800})
+                self.state.put('console:'+str(user_id),{'message_id':int(saved['message_id']),'kind':'control-widget',
+                               'screen':context(state),'updated_at':time.time()})
                 return
             except RuntimeError as error:
                 if 'message is not modified' in str(error).lower():
                     self.widget_views[(user_id,user_id,int(saved['message_id']))]={**state,'expires':time.time()+1800}
                     self.state.put(f'control-view:{user_id}:{int(saved["message_id"])}',{**state,'expires':time.time()+1800})
+                    self.state.put('console:'+str(user_id),{'message_id':int(saved['message_id']),'kind':'control-widget',
+                                   'screen':context(state),'updated_at':time.time()})
                     return
+                detail = str(error).lower()
+                if not any(x in detail for x in ('message to edit not found', "message can't be edited", 'message_id_invalid')):
+                    raise
                 self.state.put(storage_key,None)
         try:
             result=self.widget(user_id,CONTROL_WIDGET_HTML,state,'avaTUN · '+state.get('title','مرکز کنترل'))
@@ -897,6 +913,8 @@ class Bot(ResourceMixin, ConsoleMixin):
             self.state.put(storage_key,{'chat_id':chat_id,'message_id':int(message_id),'layout':layout})
             self.widget_views[(user_id,chat_id,int(message_id))]={**state,'expires':time.time()+1800}
             self.state.put(f'control-view:{user_id}:{int(message_id)}',{**state,'expires':time.time()+1800})
+            self.state.put('console:'+str(user_id),{'message_id':int(message_id),'kind':'control-widget',
+                           'screen':context(state),'updated_at':time.time()})
 
     def answer_widget(self, query, state):
         encoded=widget_chat_data(state)
@@ -982,14 +1000,14 @@ class Bot(ResourceMixin, ConsoleMixin):
                 state=self.control_widget_state(sender,current.get('page','overview'),int(current.get('p',0)),current.get('server_id','local'),current.get('selected',''))
             elif data.startswith('nav:'):
                 page=data.split(':',1)[1]
-                if page in ('forwards','audit','update') and role!='admin':raise PanelError('این بخش فقط برای مدیر فعال است.')
+                if page in ('forward_servers','forwards','audit','update') and role!='admin':raise PanelError('این بخش فقط برای مدیر فعال است.')
                 if page=='update':
                     self.panel.request('/api/v1/updates',{'action':'check'},timeout=8)
                 state=self.control_widget_state(sender,page,0,'local' if page=='forwards' else 'all')
                 if page=='update':state['message']='درخواست بررسی نسخه ثبت شد؛ نتیجه با تازه‌سازی نمایش داده می‌شود.'
             elif data.startswith('page:'):
                 parts=data.split(':',2);_,page,p=(parts+['']*3)[:3]
-                if page in ('forwards','audit','update') and role!='admin':raise PanelError('این بخش فقط برای مدیر فعال است.')
+                if page in ('forward_servers','forwards','audit','update') and role!='admin':raise PanelError('این بخش فقط برای مدیر فعال است.')
                 state=self.control_widget_state(sender,page,int(p or 0),current.get('server_id','local'),current.get('selected',''))
             elif data.startswith('sp:'):
                 _,code,server_id=data.split(':',2)
@@ -1001,7 +1019,7 @@ class Bot(ResourceMixin, ConsoleMixin):
             elif data.startswith('server:'):
                 server_id=data.split(':',1)[1]
                 if server_id not in {'local',*(str(x.get('id')) for x in self.panel.snapshot().get('servers',[]))}:raise PanelError('سرور انتخاب‌شده پیدا نشد.')
-                state=self.control_widget_state(sender,'forwards' if current.get('page')=='forwards' else 'tunnels' if current.get('page')=='tunnels' else 'resources',0,server_id)
+                state=self.control_widget_state(sender,'forwards' if current.get('page') in ('forwards','forward_servers') else 'tunnels' if current.get('page')=='tunnels' else 'resources',0,server_id)
             elif data.startswith('open:server:'):
                 state=self.control_widget_state(sender,'server',0,'local',data.split(':',2)[2])
             elif data.startswith('open:tunnel:'):

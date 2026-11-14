@@ -153,7 +153,7 @@ class BotChecks(unittest.TestCase):
         with patch.object(self.telegram, 'send', side_effect=RuntimeError('offline')):
             self.state.deliver(self.telegram, self.bot.scrub)
         self.update(1, '/start')
-        self.assertTrue(any(r[0] == 'sendMessage' for r in self.telegram.requests))
+        self.assertTrue(any(r[0] == 'sendWidget' for r in self.telegram.requests))
         self.assertEqual(1, self.state.connection.execute('SELECT COUNT(*) FROM notifications WHERE sent=0').fetchone()[0])
 
     def test_single_endpoint_is_unknown(self):
@@ -171,10 +171,11 @@ class BotChecks(unittest.TestCase):
 
     def test_admin_and_viewer_menus(self):
         self.bot.tunnel(2, 'gre-test')
-        keyboard = self.telegram.messages[-1][2]
-        self.assertNotIn('توقف', str(keyboard))
+        viewer_state = json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertNotIn('confirm:stop', str(viewer_state))
         self.bot.tunnel(1, 'gre-test')
-        self.assertIn('توقف', str(self.telegram.messages[-1][2]))
+        admin_state = json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertIn('confirm:stop', str(admin_state))
 
 
 class ClientChecks(unittest.TestCase):
@@ -346,32 +347,41 @@ class ConsoleChecks(unittest.TestCase):
     setUp = BotChecks.setUp
     tearDown = BotChecks.tearDown
     update = BotChecks.update
-    def test_native_home_never_attempts_widget_delivery(self):
+    def test_primary_home_uses_control_widget(self):
         self.update(1,'/start')
         methods=[r[0] for r in self.telegram.requests]
-        self.assertIn('sendMessage',methods)
-        self.assertNotIn('sendWidget',methods)
-        text=self.telegram.messages[-1][1]
-        self.assertNotIn('INPUT_MEDIA',text)
-        self.assertIn('آخرین دریافت',text)
+        self.assertIn('sendWidget',methods)
+        self.assertEqual(tg.CONTROL_WIDGET_HTML,self.telegram.requests[-1][1]['html'])
+        state=json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertEqual('overview',state['page'])
 
     def test_navigation_edits_single_message_and_has_named_rows(self):
         self.update(1,'/start')
         self.bot.show_screen(1,'servers')
         self.bot.show_screen(1,'tunnels')
-        self.assertEqual(1,sum(r[0]=='sendMessage' for r in self.telegram.requests))
-        self.assertEqual(2,sum(r[0]=='editMessageText' for r in self.telegram.requests))
-        labels=str(self.telegram.messages[-1][2])
-        self.assertIn('gre-test',labels)
-        self.assertIn('خانه',labels)
-        self.assertIn('بازگشت',labels)
+        self.assertEqual(1,sum(r[0]=='sendWidget' for r in self.telegram.requests))
+        self.assertEqual(2,sum(r[0]=='editMessageWidgetData' for r in self.telegram.requests))
+        state=json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertEqual('tunnels',state['page'])
+        self.assertIn('gre-test',str(state['rows']))
 
     def test_navigation_button_survives_new_bot_instance(self):
         self.update(1,'/start')
-        token=self.telegram.messages[-1][2][0][0]['callback_data']
+        message_id=self.state.get('control-widget:1')['message_id']
         self.bot=tg.Bot(self.bot.config,self.panel,self.telegram,self.state)
-        self.update(1,callback=token)
-        self.assertIn('سرورها',self.telegram.messages[-1][1])
+        self.counter += 1
+        self.bot.handle_update({'update_id':self.counter,'widget_query':{
+            'id':'query','from':{'id':1},'chat':{'type':'private','id':1},
+            'message_id':message_id,'data':'nav:servers'}})
+        state=json.loads(self.telegram.requests[-1][1]['data'])
+        self.assertEqual('servers',state['page'])
+
+    def test_forward_server_selection_uses_control_widget(self):
+        self.bot.show_screen(1,'forward_servers')
+        state=json.loads(self.telegram.requests[-1][1]['chat_data'])
+        self.assertEqual('forward_servers',state['page'])
+        self.assertIn('server:local',str(state['rows']))
+        self.assertIn('server:peer',str(state['rows']))
 
     def test_confirmation_consumption_survives_new_bot_instance(self):
         token=self.bot.button(1,'run','run-operation',operation={})['callback_data']
@@ -440,10 +450,9 @@ class ConsoleChecks(unittest.TestCase):
 
     def test_uneditable_message_is_replaced_but_network_error_is_not_replayed(self):
         self.bot.home(1)
-        saved=self.state.get('console:1')
         with patch.object(self.telegram,'request',side_effect=[RuntimeError("message can't be edited"),{'message_id':99}]) as request:
             self.bot.home(1)
-        self.assertEqual(['editMessageText','sendMessage'],[x.args[0] for x in request.call_args_list])
+        self.assertEqual(['editMessageWidgetData','sendWidget'],[x.args[0] for x in request.call_args_list])
         with patch.object(self.telegram,'request',side_effect=RuntimeError('connection failed')) as request:
             with self.assertRaises(RuntimeError):self.bot.home(1)
         request.assert_called_once()
@@ -482,13 +491,16 @@ class ResourceChecks(unittest.TestCase):
         self.state.put(self.bot.widget_delivery_key(1),{'retry_at':time.time()+3600})
         self.bot.show_screen(1,'resources')
 
-    def test_only_resource_page_uses_the_resource_widget(self):
+    def test_primary_pages_use_control_widget_and_resources_use_live_widget(self):
         self.bot.home(1);self.bot.servers(1);self.bot.tunnels(1)
-        self.assertFalse(any(r[0]=='sendWidget' for r in self.telegram.requests))
+        control=[r for r in self.telegram.requests if r[0]=='sendWidget']
+        self.assertEqual(1,len(control))
+        self.assertEqual(tg.CONTROL_WIDGET_HTML,control[0][1]['html'])
         self.bot.hardware(1)
-        request=next(r for r in self.telegram.requests if r[0]=='sendWidget')
-        self.assertEqual(tg.RESOURCE_WIDGET_HTML,request[1]['html'])
-        self.assertNotEqual(tg.CONTROL_WIDGET_HTML,request[1]['html'])
+        widgets=[r for r in self.telegram.requests if r[0]=='sendWidget']
+        self.assertEqual(2,len(widgets))
+        self.assertEqual(tg.RESOURCE_WIDGET_HTML,widgets[-1][1]['html'])
+        self.assertNotEqual(tg.CONTROL_WIDGET_HTML,widgets[-1][1]['html'])
 
     def test_resource_widget_respects_selected_server_scope(self):
         self.bot.show_screen(1,'resources',server_id='peer')
