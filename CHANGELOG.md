@@ -1,3 +1,8 @@
+## avaTUN 0.2.34 · انتظار آماده‌شدن تونل پیش از تست سرعت
+
+- Wait for both tunnel peers to answer over their inner path before starting iperf3.
+- Retry transient zero-throughput and listener-start failures up to three times, cleaning up each temporary listener.
+
 ## avaTUN 0.2.33 · سنجش و اعمال گروهی MTU
 
 - Wire the all-tunnels MTU button to a sequential per-tunnel probe and coordinated two-endpoint apply.
