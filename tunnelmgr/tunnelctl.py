@@ -2,22 +2,25 @@
 """avaTUN API; delegates Backhaul operations to the installed Backhaul manager."""
 from __future__ import annotations
 import hashlib
+import base64, hmac, struct
 import argparse, getpass, ipaddress, json, os, pathlib, re, secrets, shlex, shutil, sqlite3, subprocess, sys, time
+import unicodedata
 import tarfile, tempfile
 import platform
-import ssl, socket, urllib.request, signal
+import ssl, socket, urllib.request, urllib.parse, signal
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.42"
+APP_VERSION="0.2.43"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
 ID=re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 SESSIONS={}
+PENDING_LOGINS={}
 MONITOR_LOCK=threading.Lock();MONITOR_TUNNELS={};MONITOR_SERVERS=[];MONITOR_RESOURCES=[]
 GEOIP_CACHE={}
 FORWARD_LOCK=threading.Lock()
@@ -40,6 +43,9 @@ def db():
         if "manager" in metadata:metadata["manager"]="Backhaul"
         c.execute("UPDATE tunnels SET kind='backhaul',metadata=? WHERE id=?",(json.dumps(metadata),row["id"]))
     c.execute("CREATE TABLE IF NOT EXISTS accounts(name TEXT PRIMARY KEY,role TEXT NOT NULL,digest TEXT UNIQUE NOT NULL)")
+    account_columns={r[1] for r in c.execute("PRAGMA table_info(accounts)")}
+    for column,definition in (("totp_secret","TEXT NOT NULL DEFAULT ''"),("totp_pending","TEXT NOT NULL DEFAULT ''"),("totp_pending_at","INTEGER NOT NULL DEFAULT 0"),("totp_enabled","INTEGER NOT NULL DEFAULT 0"),("totp_last_step","INTEGER NOT NULL DEFAULT -1"),("recovery_codes","TEXT NOT NULL DEFAULT '[]'")):
+        if column not in account_columns:c.execute(f"ALTER TABLE accounts ADD COLUMN {column} {definition}")
     c.execute("CREATE TABLE IF NOT EXISTS servers(id TEXT PRIMARY KEY,host TEXT NOT NULL,user TEXT NOT NULL,identity TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     server_columns={r[1] for r in c.execute("PRAGMA table_info(servers)")}
     if "proxy_server_id" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN proxy_server_id TEXT NOT NULL DEFAULT ''")
@@ -81,20 +87,86 @@ def verify_password(password, encoded):
         return secrets.compare_digest(actual,expected)
     except (ValueError,TypeError):return False
 
+def _mfa_fernet():
+    from cryptography.fernet import Fernet
+    key_path=BASE/'mfa.key'
+    try:
+        fd=os.open(key_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    except FileExistsError:pass
+    else:
+        try:
+            os.write(fd,Fernet.generate_key());os.fsync(fd)
+        finally:os.close(fd)
+    os.chmod(key_path,0o600)
+    return Fernet(key_path.read_bytes())
+
+def _mfa_seal(secret):return _mfa_fernet().encrypt(secret.encode()).decode()
+def _mfa_open(secret):
+    if not secret:return ''
+    try:return _mfa_fernet().decrypt(secret.encode()).decode()
+    except Exception as e:raise ValueError(f'TOTP secret cannot be decrypted; preserve {BASE}/mfa.key') from e
+
+def _totp(secret,step):
+    key=base64.b32decode(secret.upper()+'='*((8-len(secret)%8)%8))
+    digest=hmac.new(key,struct.pack('>Q',step),hashlib.sha1).digest();offset=digest[-1]&15
+    return f'{(struct.unpack("!I",digest[offset:offset+4])[0]&0x7fffffff)%1000000:06d}'
+
+def _totp_match(secret,code,now=None,last_step=-1):
+    raw=str(code).strip()
+    if any(not (ch.isdecimal() or ch in ' -') for ch in raw):return None
+    digits=''.join(str(unicodedata.digit(ch)) for ch in raw if ch.isdecimal())
+    if len(digits)!=6:return None
+    step=int((time.time() if now is None else now)//30)
+    for candidate in (step,step-1,step+1):
+        if candidate>last_step and hmac.compare_digest(_totp(secret,candidate),digits):return candidate
+    return None
+
+def _recovery_codes(count=10):
+    codes=[]
+    for _ in range(count):
+        raw=secrets.token_hex(8).upper();codes.append('-'.join(raw[i:i+4] for i in range(0,16,4)))
+    return codes,[hashlib.sha256(code.encode()).hexdigest() for code in codes]
+
+def _recovery_consume(codes,value):
+    normalized=str(value).strip().upper().replace('-','').replace(' ','')
+    if len(normalized)!=16:return None
+    digest=hashlib.sha256(('-'.join(normalized[i:i+4] for i in range(0,16,4))).encode()).hexdigest()
+    for index,stored in enumerate(codes):
+        if hmac.compare_digest(digest,stored):return codes[:index]+codes[index+1:]
+    return None
+
+def _qr_svg(uri):
+    binary=shutil.which('qrencode')
+    if not binary:raise RuntimeError('QR generator is not installed; update the panel installer first')
+    result=subprocess.run([binary,'--type=SVG','--output=-','--read-from=-'],input=uri,text=True,capture_output=True,timeout=10)
+    if result.returncode or not result.stdout.lstrip().startswith('<?xml') and '<svg' not in result.stdout[:500]:raise RuntimeError((result.stderr or 'QR generation failed').strip())
+    return base64.b64encode(result.stdout.encode()).decode()
+
+def _new_session(name,role,mfa_verified=True):
+    token=secrets.token_urlsafe(32);SESSIONS[token]={'name':name,'role':role,'expires':time.time()+(12*3600 if mfa_verified else 900),'mfa_verified':bool(mfa_verified)}
+    return token
+
 def account(args):
     with db() as c:
         if args.action=="list":
-            print(json.dumps([dict(x) for x in c.execute("SELECT name,role FROM accounts ORDER BY name")]))
+            print(json.dumps([dict(x) for x in c.execute("SELECT name,role,totp_enabled FROM accounts ORDER BY name")]))
             return
         if not args.name or not ID.fullmatch(args.name):raise ValueError("invalid account name")
         if args.action=="revoke":
             if not c.execute("DELETE FROM accounts WHERE name=?",(args.name,)).rowcount:raise ValueError("unknown account")
+            for key,value in list(SESSIONS.items()):
+                if value.get('name')==args.name:SESSIONS.pop(key,None)
+            return
+        if args.action=="mfa-reset":
+            if not c.execute("UPDATE accounts SET totp_secret='',totp_pending='',totp_pending_at=0,totp_enabled=0,totp_last_step=-1,recovery_codes='[]' WHERE name=?",(args.name,)).rowcount:raise ValueError("unknown account")
+            for key,value in list(SESSIONS.items()):
+                if value.get('name')==args.name:SESSIONS.pop(key,None)
             return
         password=args.password or (sys.stdin.readline().rstrip("\r\n") if getattr(args,"password_stdin",False) else getpass.getpass("New password (12+ characters): "))
         if len(password)<12:raise ValueError("password must contain at least 12 characters")
         if args.action=="password":
             if not c.execute("UPDATE accounts SET digest=? WHERE name=?",(password_digest(password),args.name)).rowcount:raise ValueError("unknown account")
-        else:c.execute("INSERT INTO accounts VALUES(?,?,?)",(args.name,args.role,password_digest(password)))
+        else:c.execute("INSERT INTO accounts(name,role,digest) VALUES(?,?,?)",(args.name,args.role,password_digest(password)))
         c.commit()
         print("account created")
 
@@ -2055,13 +2127,21 @@ def server(host,port):
             if not morsel:return None
             value=morsel.value; entry=SESSIONS.get(value)
             if not entry:return None
-            if entry[2]<time.time():SESSIONS.pop(value,None);return None
-            return entry[1]
+            if entry['expires']<time.time():SESSIONS.pop(value,None);return None
+            with db() as c:account_row=c.execute("SELECT role,totp_enabled FROM accounts WHERE name=?",(entry['name'],)).fetchone()
+            if not account_row:SESSIONS.pop(value,None);return None
+            if account_row['role']=='admin' and not account_row['totp_enabled']:return 'mfa_setup'
+            if account_row['totp_enabled'] and not entry.get('mfa_verified'):return 'mfa_verify'
+            return account_row['role']
         def session(self):
             from http.cookies import SimpleCookie
             cookie=SimpleCookie(self.headers.get("Cookie",""));m=cookie.get("tunnelmgr_session")
             entry=SESSIONS.get(m.value) if m else None
-            return entry if entry and entry[2]>=time.time() else None
+            return entry if entry and entry['expires']>=time.time() else None
+        def session_cookie(self,token):
+            secure='; Secure' if isinstance(self.connection,ssl.SSLSocket) else '';entry=SESSIONS.get(token,{})
+            max_age=max(0,int(entry.get('expires',time.time()+43200)-time.time()))
+            self.send_header('Set-Cookie',f'tunnelmgr_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}')
         def do_GET(self):
             from urllib.parse import urlsplit, parse_qs
             request=urlsplit(self.path)
@@ -2083,11 +2163,17 @@ def server(host,port):
                 self.send_response(302);self.send_header("Location","/#accounts");self.send_header("Content-Length","0");self.end_headers();return
             if route=="/health":return self.send(200,{"ok":True})
             if route=="/api/v1/auth/session":
-                s=self.session();return self.send(200,{"ok":bool(s),"username":s[0] if s else None,"role":s[1] if s else None})
+                s=self.session();return self.send(200,{"ok":bool(s),"username":s['name'] if s else None,"role":self.role() if s else None})
             role=self.role()
             if not role:return self.send(401,{"error":"sign in required"})
+            if role in ('mfa_setup','mfa_verify') and route not in ('/api/v1/auth/mfa','/api/v1/settings/panel-tls'):
+                return self.send(403,{"error":"Complete multi-factor authentication before using the panel"})
+            if route=="/api/v1/auth/mfa":
+                session=self.session()
+                with db() as c:row=c.execute("SELECT role,totp_enabled,totp_pending,totp_pending_at FROM accounts WHERE name=?",(session['name'],)).fetchone()
+                return self.send(200,{'username':session['name'],'enabled':bool(row['totp_enabled']),'required':row['role']=='admin','setup_pending':bool(row['totp_pending'] and row['totp_pending_at']>=int(time.time())-600),'https_required':not isinstance(self.connection,ssl.SSLSocket)})
             if route=="/api/v1/settings/panel-tls":
-                if role!="admin":return self.send(403,{"error":"admin role required"})
+                if role not in ("admin","mfa_setup"):return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'panel-tls','id':'panel-tls','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
             if route=="/api/v1/settings/telegram":
@@ -2202,22 +2288,103 @@ def server(host,port):
             if self.path=="/api/v1/auth/login":
                 try:
                     data=self.body();name=data.get("username","");password=data.get("password","")
-                    with db() as c:row=c.execute("SELECT role,digest FROM accounts WHERE name=?",(name,)).fetchone()
+                    with db() as c:row=c.execute("SELECT role,digest,totp_enabled FROM accounts WHERE name=?",(name,)).fetchone()
                     if not row or not verify_password(password,row["digest"]):return self.send(401,{"error":"نام کاربری یا گذرواژه نادرست است"})
-                    session=secrets.token_urlsafe(32);SESSIONS[session]=(name,row["role"],time.time()+12*3600)
+                    if row['totp_enabled']:
+                        if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای ورود دومرحله‌ای باید پنل را با HTTPS باز کنی.'})
+                        challenge=secrets.token_urlsafe(32);PENDING_LOGINS[challenge]={'name':name,'role':row['role'],'expires':time.time()+300,'attempts':0}
+                        return self.send(200,{'ok':True,'mfa_required':True,'challenge':challenge,'username':name})
+                    session=_new_session(name,row["role"],row['role']!='admin')
                     self.send_response(200);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Cache-Control","no-store")
-                    self.send_header("Set-Cookie",f"tunnelmgr_session={session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200")
-                    payload=json.dumps({"ok":True,"username":name,"role":row["role"]},ensure_ascii=False).encode();self.send_header("Content-Length",str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                    self.session_cookie(session)
+                    role='mfa_setup' if row['role']=='admin' else row['role']
+                    payload=json.dumps({"ok":True,"username":name,"role":role,'mfa_setup_required':role=='mfa_setup'},ensure_ascii=False).encode();self.send_header("Content-Length",str(len(payload)));self.end_headers();self.wfile.write(payload);return
                 except Exception as e:return self.send(400,{"error":str(e)})
+            if self.path=="/api/v1/auth/mfa/verify":
+                try:
+                    if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای ورود دومرحله‌ای باید پنل را با HTTPS باز کنی.'})
+                    data=self.body();challenge=data.get('challenge','');pending=PENDING_LOGINS.get(challenge)
+                    if not pending or pending['expires']<time.time():PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'درخواست ورود منقضی شده؛ دوباره وارد شو.'})
+                    pending['attempts']+=1
+                    if pending['attempts']>5:PENDING_LOGINS.pop(challenge,None);return self.send(429,{'error':'تعداد تلاش‌ها زیاد شد؛ دوباره وارد شو.'})
+                    with db() as c:
+                        c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT role,totp_secret,totp_enabled,totp_last_step,recovery_codes FROM accounts WHERE name=?',(pending['name'],)).fetchone()
+                        if not row or not row['totp_enabled']:PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'احراز هویت دومرحله‌ای در این حساب فعال نیست.'})
+                        last_step=row['totp_last_step'];secret=_mfa_open(row['totp_secret']);matched=_totp_match(secret,data.get('code',''),last_step)
+                        if matched is not None:c.execute('UPDATE accounts SET totp_last_step=? WHERE name=?',(matched,pending['name']))
+                        else:
+                            codes=json.loads(row['recovery_codes'] or '[]');remaining=_recovery_consume(codes,data.get('code',''))
+                            if remaining is None:return self.send(401,{'error':'کد نادرست است یا قبلاً استفاده شده.'})
+                            c.execute('UPDATE accounts SET recovery_codes=? WHERE name=?',(json.dumps(remaining),pending['name']))
+                    PENDING_LOGINS.pop(challenge,None);session=_new_session(pending['name'],pending['role'],True)
+                    self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.session_cookie(session)
+                    payload=json.dumps({'ok':True,'username':pending['name'],'role':pending['role']}).encode();self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                except Exception as e:return self.send(400,{'error':str(e)})
             if self.path=="/api/v1/auth/logout":
                 from http.cookies import SimpleCookie
                 cookie=SimpleCookie(self.headers.get("Cookie",""));m=cookie.get("tunnelmgr_session")
                 if m:SESSIONS.pop(m.value,None)
-                self.send_response(200);self.send_header("Content-Type","application/json");self.send_header("Set-Cookie","tunnelmgr_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");self.send_header("Content-Length","11");self.end_headers();self.wfile.write(b'{"ok":true}');return
+                self.send_response(200);self.send_header("Content-Type","application/json");self.send_header("Set-Cookie","tunnelmgr_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"+('; Secure' if isinstance(self.connection,ssl.SSLSocket) else ''));self.send_header("Content-Length","11");self.end_headers();self.wfile.write(b'{"ok":true}');return
             role=self.role()
             if not role:return self.send(401,{"error":"unauthorized"})
+            if role in ('mfa_setup','mfa_verify') and self.path!='/api/v1/auth/mfa' and not (role=='mfa_setup' and self.path=='/api/v1/settings/panel-tls'):
+                return self.send(403,{'error':'Complete multi-factor authentication before using the panel'})
+            if self.path=="/api/v1/auth/mfa":
+                try:
+                    if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای فعال‌سازی یا مدیریت TOTP باید پنل را با HTTPS باز کنی.'})
+                    data=self.body();session=self.session();name=session['name'];action=data.get('action')
+                    with db() as c:
+                        c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT role,digest,totp_secret,totp_pending,totp_pending_at,totp_enabled,totp_last_step,recovery_codes FROM accounts WHERE name=?',(name,)).fetchone()
+                        if not row:return self.send(401,{'error':'account no longer exists'})
+                        if action=='begin':
+                            if row['totp_enabled']:raise ValueError('ورود دومرحله‌ای از قبل فعال است؛ کدهای بازیابی را بچرخان یا از مدیر بخواه آن را بازنشانی کند.')
+                            if role!='mfa_setup' and not verify_password(data.get('current_password',''),row['digest']):raise ValueError('گذرواژهٔ فعلی درست نیست.')
+                            secret=base64.b32encode(secrets.token_bytes(20)).decode().rstrip('=')
+                            uri='otpauth://totp/'+urllib.parse.quote('avaTUN:'+name,safe='')+'?'+urllib.parse.urlencode({'secret':secret,'issuer':'avaTUN','algorithm':'SHA1','digits':6,'period':30})
+                            qr=_qr_svg(uri);c.execute('UPDATE accounts SET totp_pending=?,totp_pending_at=? WHERE name=?',(_mfa_seal(secret),int(time.time()),name))
+                            return self.send(200,{'ok':True,'secret':secret,'qr_svg_base64':qr})
+                        if action=='confirm':
+                            if not row['totp_pending'] or row['totp_pending_at']<int(time.time())-600:raise ValueError('مهلت راه‌اندازی تمام شده؛ دوباره شروع کن.')
+                            secret=_mfa_open(row['totp_pending']);matched=_totp_match(secret,data.get('code',''))
+                            if matched is None:raise ValueError('کد برنامه درست نیست یا ساعت دستگاه هماهنگ نیست.')
+                            plain_codes,hashed_codes=_recovery_codes();c.execute('UPDATE accounts SET totp_secret=totp_pending,totp_pending="",totp_pending_at=0,totp_enabled=1,totp_last_step=?,recovery_codes=? WHERE name=?',(matched,json.dumps(hashed_codes),name))
+                            session_token=next((k for k,v in SESSIONS.items() if v is session),None);session['mfa_verified']=True;session['expires']=time.time()+12*3600
+                            for key,entry in SESSIONS.items():
+                                if entry.get('name')==name and key!=session_token:entry['mfa_verified']=False
+                            self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store')
+                            if session_token:self.session_cookie(session_token)
+                            payload=json.dumps({'ok':True,'enabled':True,'role':row['role'],'recovery_codes':plain_codes}).encode();self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                        if action=='verify-session':
+                            if not row['totp_enabled']:raise ValueError('ورود دومرحله‌ای برای این حساب فعال نیست.')
+                            secret=_mfa_open(row['totp_secret']);matched=_totp_match(secret,data.get('code',''),row['totp_last_step'])
+                            if matched is not None:c.execute('UPDATE accounts SET totp_last_step=? WHERE name=?',(matched,name))
+                            else:
+                                codes=json.loads(row['recovery_codes'] or '[]');remaining=_recovery_consume(codes,data.get('code',''))
+                                if remaining is None:raise ValueError('کد نادرست است یا قبلاً استفاده شده.')
+                                c.execute('UPDATE accounts SET recovery_codes=? WHERE name=?',(json.dumps(remaining),name))
+                            session['mfa_verified']=True;session['expires']=time.time()+12*3600
+                            token=next((k for k,v in SESSIONS.items() if v is session),None)
+                            self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store')
+                            if token:self.session_cookie(token)
+                            payload=json.dumps({'ok':True,'username':name,'role':row['role']}).encode();self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                        if action=='rotate-recovery':
+                            if not row['totp_enabled']:raise ValueError('ورود دومرحله‌ای برای این حساب فعال نیست.')
+                            matched=_totp_match(_mfa_open(row['totp_secret']),data.get('code',''),row['totp_last_step'])
+                            if matched is None:raise ValueError('کد برنامه درست نیست یا قبلاً استفاده شده.')
+                            plain_codes,hashed_codes=_recovery_codes();c.execute('UPDATE accounts SET totp_last_step=?,recovery_codes=? WHERE name=?',(matched,json.dumps(hashed_codes),name))
+                            return self.send(200,{'ok':True,'recovery_codes':plain_codes})
+                        if action=='disable':
+                            if row['role']=='admin':raise ValueError('برای مدیر، ورود دومرحله‌ای اجباری است.')
+                            if not verify_password(data.get('current_password',''),row['digest']):raise ValueError('گذرواژهٔ فعلی درست نیست.')
+                            matched=_totp_match(_mfa_open(row['totp_secret']),data.get('code',''),row['totp_last_step'])
+                            if not row['totp_enabled'] or matched is None:raise ValueError('کد برنامه درست نیست یا قبلاً استفاده شده.')
+                            c.execute("UPDATE accounts SET totp_secret='',totp_pending='',totp_pending_at=0,totp_enabled=0,totp_last_step=-1,recovery_codes='[]' WHERE name=?",(name,))
+                            session['mfa_verified']=True
+                            return self.send(200,{'ok':True,'enabled':False})
+                        raise ValueError('عملیات MFA نامعتبر است.')
+                except Exception as e:return self.send(400,{'error':str(e)})
             if self.path=="/api/v1/settings/panel-tls":
-                if role!="admin":return self.send(403,{"error":"admin role required"})
+                if role not in ("admin","mfa_setup"):return self.send(403,{"error":"admin role required"})
                 try:
                     data=self.body();result=privileged({'op':'panel-tls','id':'panel-tls','action':'apply','domain':data.get('domain'),'email':data.get('email'),'port':data.get('port')},timeout=30)
                     if result.get('error'):return self.send(400,result)
@@ -2452,15 +2619,20 @@ def server(host,port):
                     data=self.body()
                     action=data.get("action")
                     with db() as c:
-                        if action=="list":return self.send(200,{"items":[dict(r) for r in c.execute("SELECT name,role FROM accounts ORDER BY name")]})
+                        if action=="list":return self.send(200,{"items":[dict(r) for r in c.execute("SELECT name,role,totp_enabled FROM accounts ORDER BY name")]})
                         name=data.get("name","")
                         if not ID.fullmatch(name):raise ValueError("Invalid account name")
                         if action=="create" and data.get("role") in ("admin","viewer","operator"):
                             password=data.get("password","")
                             if len(password)<12:raise ValueError("password must contain at least 12 characters")
-                            c.execute("INSERT INTO accounts VALUES(?,?,?)",(name,data["role"],password_digest(password)))
+                            c.execute("INSERT INTO accounts(name,role,digest) VALUES(?,?,?)",(name,data["role"],password_digest(password)))
                             c.commit()
                             return self.send(201,{"ok":True})
+                        if action=="mfa-reset":
+                            if not c.execute("UPDATE accounts SET totp_secret='',totp_pending='',totp_pending_at=0,totp_enabled=0,totp_last_step=-1,recovery_codes='[]' WHERE name=?",(name,)).rowcount:raise ValueError("unknown account")
+                            for key,value in list(SESSIONS.items()):
+                                if value.get('name')==name:SESSIONS.pop(key,None)
+                            c.commit();return self.send(200,{"ok":True})
                         if action=="password":
                             password=data.get("password","")
                             if len(password)<12:raise ValueError("password must contain at least 12 characters")
@@ -2543,7 +2715,7 @@ def main():
     s.add_parser("init");s.add_parser("list");a=s.add_parser("api");a.add_argument("--host",default="127.0.0.1");a.add_argument("--port",type=int,default=8765)
     b=s.add_parser("backhaul");b.add_argument("args",nargs=argparse.REMAINDER)
     m=s.add_parser("mesh");ms=m.add_subparsers(dest="mesh_cmd",required=True);mp=ms.add_parser("plan");mp.add_argument("--nodes",required=True);mp.add_argument("--pool",default="10.240.0.0/16");mp.add_argument("--topology",choices=("full","hub"),default="full");mp.add_argument("--hub");mp.add_argument("--direction",choices=("direct","reverse"),default="direct");mp.add_argument("--public-nodes");mp.add_argument("--endpoints",help="comma-separated node=host entries")
-    u=s.add_parser("account");u.add_argument("action",choices=("create","revoke","list","password"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"),default="viewer");u.add_argument("--password",help=argparse.SUPPRESS);u.add_argument("--password-stdin",action="store_true",help=argparse.SUPPRESS)
+    u=s.add_parser("account");u.add_argument("action",choices=("create","revoke","list","password","mfa-reset"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"),default="viewer");u.add_argument("--password",help=argparse.SUPPRESS);u.add_argument("--password-stdin",action="store_true",help=argparse.SUPPRESS)
     n=p.parse_args()
     try:
         if n.cmd=="init":db().close();print(f"initialized {DB}; create the first user with: tunnelctl.py account create admin --role admin")

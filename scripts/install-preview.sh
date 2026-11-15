@@ -105,6 +105,9 @@ command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
 command -v modprobe >/dev/null 2>&1 || PACKAGES="$PACKAGES kmod"
+command -v qrencode >/dev/null 2>&1 || PACKAGES="$PACKAGES qrencode"
+PYTHON_CRYPTO_STATUS=$(dpkg-query -W -f='${Status}' python3-cryptography 2>/dev/null || true)
+case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-cryptography" ;; esac
 if [ -n "$PACKAGES" ]; then
     command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
