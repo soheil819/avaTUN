@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.43"
+APP_VERSION="0.2.44"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -138,7 +138,7 @@ def _recovery_consume(codes,value):
 def _qr_svg(uri):
     binary=shutil.which('qrencode')
     if not binary:raise RuntimeError('QR generator is not installed; update the panel installer first')
-    result=subprocess.run([binary,'--type=SVG','--output=-','--read-from=-'],input=uri,text=True,capture_output=True,timeout=10)
+    result=subprocess.run([binary,'--type=SVG','--output=-'],input=uri,text=True,capture_output=True,timeout=10)
     if result.returncode or not result.stdout.lstrip().startswith('<?xml') and '<svg' not in result.stdout[:500]:raise RuntimeError((result.stderr or 'QR generation failed').strip())
     return base64.b64encode(result.stdout.encode()).decode()
 
