@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import argparse, getpass, ipaddress, json, os, pathlib, re, secrets, shlex, shutil, sqlite3, subprocess, sys, time
 import tarfile, tempfile
+import platform
 import ssl, socket, urllib.request, signal
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -11,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.35"
+APP_VERSION="0.2.37"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -20,6 +21,7 @@ SESSIONS={}
 MONITOR_LOCK=threading.Lock();MONITOR_TUNNELS={};MONITOR_SERVERS=[];MONITOR_RESOURCES=[]
 GEOIP_CACHE={}
 FORWARD_LOCK=threading.Lock()
+PROXY_LOCK=threading.RLock()
 NATIVE_PAIR_LOCK=threading.RLock()
 SPEEDTEST_LOCK=threading.Lock()
 FIELDS={"listen","peer","secret_file","tun_name","tun_local","tun_remote","tun_mtu","health_port","replace"}
@@ -41,12 +43,15 @@ def db():
     c.execute("CREATE TABLE IF NOT EXISTS servers(id TEXT PRIMARY KEY,host TEXT NOT NULL,user TEXT NOT NULL,identity TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     server_columns={r[1] for r in c.execute("PRAGMA table_info(servers)")}
     if "proxy_server_id" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN proxy_server_id TEXT NOT NULL DEFAULT ''")
+    if "proxy_line_id" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN proxy_line_id TEXT NOT NULL DEFAULT ''")
     if "location" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN location TEXT NOT NULL DEFAULT 'abroad'")
     if "auto_geoip" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN auto_geoip INTEGER NOT NULL DEFAULT 1")
     if "geoip_host" not in server_columns:c.execute("ALTER TABLE servers ADD COLUMN geoip_host TEXT NOT NULL DEFAULT ''")
     for column,definition in (("geo_country_code","TEXT"),("geo_country_name","TEXT"),("geo_city","TEXT"),("geo_latitude","REAL"),("geo_longitude","REAL")):
         if column not in server_columns:c.execute(f"ALTER TABLE servers ADD COLUMN {column} {definition}")
     c.execute("CREATE TABLE IF NOT EXISTS port_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS proxy_lines(id TEXT PRIMARY KEY,metadata TEXT NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS proxy_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
     c.commit(); return c
@@ -468,10 +473,17 @@ def ssh_argv(server):
     cmd=["ssh","-T","-o","StrictHostKeyChecking=accept-new","-o",f"UserKnownHostsFile={BASE/'known_hosts'}","-o","ConnectTimeout=12","-o","BatchMode=yes"]
     if server.get("identity"):cmd += ["-i",server["identity"],"-o","IdentitiesOnly=yes"]
     proxy_id=server.get("proxy_server_id")
+    line_id=server.get("proxy_line_id") or ''
+    if proxy_id and line_id:raise ValueError('choose either an SSH jump server or an Xray proxy line, not both')
+    if line_id:
+        line=proxy_line(line_id)
+        helper=pathlib.Path(__file__).with_name('socks5_connect.py')
+        proxy=[sys.executable,str(helper),str(line['socks_port']),'%h','%p']
+        cmd += ['-o','ProxyCommand='+shlex.join(proxy)]
     if proxy_id:
         proxy=next((s for s in server_rows() if s["id"]==proxy_id),None)
         if not proxy:raise ValueError(f"SSH proxy server {proxy_id} is missing")
-        if proxy.get("proxy_server_id"):raise ValueError("SSH proxy chains are limited to one hop")
+        if proxy.get("proxy_server_id") or proxy.get('proxy_line_id'):raise ValueError("SSH proxy chains are limited to one hop")
         try:ipaddress.ip_address(proxy["host"].strip("[]"));proxy_host=f'[{proxy["host"].strip("[]")}]' if ":" in proxy["host"] else proxy["host"]
         except ValueError:proxy_host=proxy["host"]
         jump=["ssh","-T","-o","StrictHostKeyChecking=accept-new","-o",f"UserKnownHostsFile={BASE/'known_hosts'}","-o","ConnectTimeout=12","-o","BatchMode=yes"]
@@ -661,7 +673,7 @@ def resource_monitor_loop():
 
 def server_remote(server,payload):
     import inspect
-    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface'),'local':d.get('local')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
+    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface'),'local':d.get('local')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='xray-config':\n out=t.privileged({'op':'xray-config','id':'xray','action':d.get('action','apply'),'config':d.get('config')})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
     code=code.replace("out={'items':out,'services':services}","out={'items':out,'services':services,'app_version':getattr(t,'APP_VERSION','نامشخص')}",1)
     guarded_code="import json\ntry:\n exec(compile("+repr(code)+", '<tunnelmgr-remote>', 'exec'))\nexcept Exception as exc:\n print(json.dumps({'error':str(exc)},ensure_ascii=False))"
     remote="runuser -u tunnelmgr -- env TUNNELMGR_HOME=/var/lib/tunnelmgr /usr/bin/python3 -c "+shlex.quote(guarded_code)
@@ -685,9 +697,12 @@ def install_remote(server):
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
-            for name in ("install-preview.sh","mesh-deploy.py","mesh-worker.py","github-update.py"):
+            for name in ("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py"):
                 p=root/"scripts"/name
                 if p.is_file():tf.add(p,arcname=f"scripts/{name}")
+            xray=pathlib.Path('/opt/tunnelmgr/bin/xray')
+            arch={'x86_64':'linux-amd64','aarch64':'linux-arm64'}.get(platform.machine().lower())
+            if arch and xray.is_file():tf.add(xray,arcname=f'runtime/xray-core-{arch}')
         payload=pathlib.Path(bundle.name).read_bytes()
     remote="mkdir -p /tmp/tunnelmgr-bootstrap && tar -xzf - -C /tmp/tunnelmgr-bootstrap && sh /tmp/tunnelmgr-bootstrap/scripts/install-preview.sh"
     p=subprocess.run(ssh_argv(server)+[remote],input=payload,capture_output=True,timeout=180)
@@ -698,6 +713,174 @@ def save(ident,mode,metadata):
 
 def forward_rows():
     with db() as c:return [json.loads(r["config"]) for r in c.execute("SELECT config FROM port_forwards ORDER BY id")]
+
+def proxy_line_path(ident):
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('invalid proxy line ID')
+    return BASE/'proxy-lines'/(ident+'.json')
+
+def proxy_lines():
+    with db() as c:rows=[json.loads(r['metadata']) for r in c.execute('SELECT metadata FROM proxy_lines ORDER BY id')]
+    result=[]
+    for meta in rows:
+        path=proxy_line_path(meta['id'])
+        try:secret=json.loads(path.read_text())
+        except Exception as error:raise RuntimeError(f"proxy line {meta['id']} configuration is unreadable") from error
+        result.append({**meta,'outbound':secret['outbound']})
+    return result
+
+def proxy_line(ident):
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('invalid proxy line ID')
+    with db() as c:row=c.execute('SELECT metadata FROM proxy_lines WHERE id=?',(ident,)).fetchone()
+    if not row:raise ValueError('proxy line not found')
+    metadata=json.loads(row['metadata'])
+    try:secret=json.loads(proxy_line_path(ident).read_text())
+    except Exception as error:raise RuntimeError('proxy line private config is missing or unreadable') from error
+    return {**metadata,'outbound':secret['outbound']}
+
+def proxy_line_summaries():
+    return [{key:line.get(key) for key in ('id','label','protocol','address','port','created_at','socks_port')} for line in proxy_lines()]
+
+def proxy_forward_rows():
+    with db() as c:return [json.loads(r['config']) for r in c.execute('SELECT config FROM proxy_forwards ORDER BY id')]
+
+def _write_proxy_line(line):
+    directory=BASE/'proxy-lines';directory.mkdir(mode=0o700,parents=True,exist_ok=True);os.chmod(directory,0o700)
+    path=proxy_line_path(line['id']);fd,tmp=tempfile.mkstemp(prefix='.line-',dir=directory)
+    try:
+        os.fchmod(fd,0o600)
+        with os.fdopen(fd,'w') as stream:json.dump({'outbound':line['outbound']},stream,separators=(',',':'));stream.flush();os.fsync(stream.fileno())
+        os.replace(tmp,path);path.chmod(0o600)
+    finally:pathlib.Path(tmp).unlink(missing_ok=True)
+
+def _proxy_socks_port(ident):
+    used={int(line['socks_port']) for line in proxy_lines()}
+    start=20000+int(hashlib.sha256(ident.encode()).hexdigest()[:8],16)%10000
+    for offset in range(10000):
+        port=20000+(start-20000+offset)%10000
+        if port not in used:return port
+    raise ValueError('no local SOCKS listener port is available')
+
+def _host_proxy_forwards(server_id,override=None):
+    rows=proxy_forward_rows() if override is None else override
+    return [item for item in rows if item.get('server_id','local')==server_id]
+
+def proxy_host_config(server_id,forwards_override=None):
+    forwards=_host_proxy_forwards(server_id,forwards_override)
+    lines=proxy_lines()
+    ssh_lines=[line['id'] for line in lines] if server_id=='local' else []
+    if server_id!='local':
+        required={item['line_id'] for item in forwards}
+        lines=[line for line in lines if line['id'] in required]
+    from xray_profiles import build_config
+    return build_config(lines,ssh_lines,forwards)
+
+def apply_proxy_host(server_id,forwards_override=None):
+    forwards=_host_proxy_forwards(server_id,forwards_override)
+    if server_id=='local':
+        if not proxy_lines() and not forwards:return privileged({'op':'xray-config','id':'xray','action':'remove'})
+        config=proxy_host_config(server_id,forwards_override)
+        return privileged({'op':'xray-config','id':'xray','action':'apply','config':config})
+    server=next((row for row in server_rows() if row['id']==server_id),None)
+    if not server:raise ValueError('port-forward server is no longer registered')
+    if not forwards:return server_remote(server,{'op':'xray-config','action':'remove'})
+    config=proxy_host_config(server_id,forwards_override)
+    return server_remote(server,{'op':'xray-config','action':'apply','config':config})
+
+def save_proxy_forward(data,action):
+    ident=data.get('id','');server_id=data.get('server_id','local');line_id=data.get('line_id','')
+    if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError('شناسهٔ فوروارد نامعتبر است')
+    if not isinstance(server_id,str) or (server_id!='local' and not any(row['id']==server_id for row in server_rows())):raise ValueError('سرور شنود در فهرست مدیریت‌شده‌ها نیست')
+    if not isinstance(line_id,str) or not ID.fullmatch(line_id):raise ValueError('خط پروکسی را انتخاب کن')
+    proxy_line(line_id)
+    listen_ip=str(data.get('listen_ip','0.0.0.0')).strip()
+    try:listen_ip=str(ipaddress.ip_address(listen_ip))
+    except ValueError as error:raise ValueError('آدرس شنود باید IPv4 یا IPv6 باشد') from error
+    listen_port=data.get('listen_port');target_port=data.get('target_port')
+    if type(listen_port) is not int or not 1<=listen_port<=65535 or type(target_port) is not int or not 1<=target_port<=65535:raise ValueError('پورت‌ها باید بین ۱ تا ۶۵۵۳۵ باشند')
+    target_host=str(data.get('target_host','')).strip()
+    from xray_profiles import _safe_host
+    target_host=_safe_host(target_host)
+    network=data.get('network','tcp')
+    if network not in ('tcp','udp'):raise ValueError('نوع اتصال باید TCP یا UDP باشد')
+    item={'id':ident,'server_id':server_id,'line_id':line_id,'listen_ip':listen_ip,'listen_port':listen_port,'target_host':target_host,'target_port':target_port,'network':network,'enabled':True}
+    with PROXY_LOCK:
+        current=proxy_forward_rows();existing=next((row for row in current if row['id']==ident),None)
+        if action=='create' and existing:raise ValueError('شناسهٔ فوروارد تکراری است')
+        if action=='update' and (not existing or existing.get('server_id','local')!=server_id):raise ValueError('فوروارد روی این سرور پیدا نشد')
+        if action not in ('create','update'):raise ValueError('عملیات فوروارد نامعتبر است')
+        for row in current:
+            if row['id']==ident:continue
+            if row.get('server_id','local')==server_id and row.get('listen_port')==listen_port:
+                raise ValueError('این پورت قبلاً برای خط پروکسی روی همین سرور استفاده شده است')
+        for row in forward_rows():
+            if row.get('server_id','local')==server_id and row.get('listen_port')==listen_port:
+                raise ValueError('این پورت در HAProxy همین سرور استفاده شده است')
+        desired=[row for row in current if row['id']!=ident]+[item]
+        with db() as c:c.execute('INSERT INTO proxy_forwards(id,config) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config',(ident,json.dumps(item)))
+        try:
+            service=apply_proxy_host(server_id,desired)
+        except Exception:
+            if existing:
+                with db() as c:c.execute('UPDATE proxy_forwards SET config=? WHERE id=?',(json.dumps(existing),ident))
+            else:
+                with db() as c:c.execute('DELETE FROM proxy_forwards WHERE id=?',(ident,))
+            try:apply_proxy_host(server_id,current)
+            except Exception:pass
+            raise
+        return {'ok':True,'item':item,'service':service}
+
+def delete_proxy_forward(ident,server_id):
+    with PROXY_LOCK:
+        current=proxy_forward_rows();existing=next((row for row in current if row['id']==ident and row.get('server_id','local')==server_id),None)
+        if not existing:raise ValueError('فوروارد روی این سرور پیدا نشد')
+        desired=[row for row in current if row['id']!=ident]
+        with db() as c:c.execute('DELETE FROM proxy_forwards WHERE id=?',(ident,))
+        try:service=apply_proxy_host(server_id,desired)
+        except Exception:
+            with db() as c:c.execute('INSERT INTO proxy_forwards(id,config) VALUES(?,?)',(ident,json.dumps(existing)))
+            try:apply_proxy_host(server_id,current)
+            except Exception:pass
+            raise
+        return {'ok':True,'service':service}
+
+def create_proxy_line(ident,link):
+    from xray_profiles import parse_link
+    with PROXY_LOCK:
+        with db() as c:
+            if c.execute('SELECT 1 FROM proxy_lines WHERE id=?',(ident,)).fetchone():raise ValueError('proxy line ID already exists')
+        line=parse_link(ident,link);line['socks_port']=_proxy_socks_port(ident);line['created_at']=int(time.time())
+        metadata={key:line[key] for key in ('id','tag','protocol','address','port','label','socks_port','created_at')}
+        _write_proxy_line(line)
+        try:
+            with db() as c:c.execute('INSERT INTO proxy_lines(id,metadata) VALUES(?,?)',(ident,json.dumps(metadata,ensure_ascii=False)))
+            result=apply_proxy_host('local')
+            if not result.get('ok'):raise RuntimeError(result.get('error','Xray did not accept the proxy line'))
+        except Exception:
+            with db() as c:c.execute('DELETE FROM proxy_lines WHERE id=?',(ident,))
+            proxy_line_path(ident).unlink(missing_ok=True)
+            try:apply_proxy_host('local')
+            except Exception:pass
+            raise
+        return {'ok':True,'item':metadata,'service':result}
+
+def delete_proxy_line(ident):
+    with PROXY_LOCK:
+        line=proxy_line(ident)
+        users=[row['id'] for row in server_rows() if row.get('proxy_line_id')==ident]
+        forwards=[row['id'] for row in proxy_forward_rows() if row.get('line_id')==ident]
+        if users or forwards:
+            detail=[]
+            if users:detail.append('SSH سرورها: '+', '.join(users))
+            if forwards:detail.append('فورواردها: '+', '.join(forwards))
+            raise ValueError('ابتدا مسیرهای استفاده‌کننده از خط را جدا کن؛ '+'؛ '.join(detail))
+        with db() as c:c.execute('DELETE FROM proxy_lines WHERE id=?',(ident,))
+        proxy_line_path(ident).unlink(missing_ok=True)
+        try:result=apply_proxy_host('local')
+        except Exception:
+            _write_proxy_line(line)
+            with db() as c:c.execute('INSERT INTO proxy_lines(id,metadata) VALUES(?,?)',(ident,json.dumps({key:line[key] for key in ('id','tag','protocol','address','port','label','socks_port','created_at')},ensure_ascii=False)))
+            raise
+        return {'ok':True,'service':result}
 
 def normalize_forward(data,server_id):
     ident=data.get("id","")
@@ -1745,18 +1928,25 @@ def _rewrite_tunnel_host(config,old,new):
                 except (ValueError,KeyError):pass
     return updated,changed
 
-def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,password="",new_location=None,auto_geoip=True):
+def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,password="",new_location=None,auto_geoip=True,new_proxy_line_id=None):
     servers={s["id"]:s for s in server_rows()}
     current=servers.get(server_id)
     if not current:raise ValueError("server not found")
     old_host=current["host"]
     new_user=current["user"] if new_user is None else new_user
     new_proxy_id=current.get("proxy_server_id","") if new_proxy_id is None else new_proxy_id
+    new_proxy_line_id=current.get('proxy_line_id','') if new_proxy_line_id is None else new_proxy_line_id
     new_location=current.get("location","abroad") if new_location is None else new_location
     geoip_result=None;geoip_error=""
     if not isinstance(new_host,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}",new_host):raise ValueError("آدرس سرور نامعتبر است")
     if not isinstance(new_user,str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}",new_user):raise ValueError("نام کاربری SSH نامعتبر است")
     if not isinstance(new_proxy_id,str):raise ValueError("سرور پروکسی نامعتبر است")
+    if not isinstance(new_proxy_line_id,str):raise ValueError('خط پروکسی نامعتبر است')
+    if new_proxy_id and new_proxy_line_id:raise ValueError('برای SSH فقط یک مسیر پروکسی انتخاب کن')
+    if new_proxy_line_id:
+        proxy_line(new_proxy_line_id)
+        state=privileged({'op':'xray-config','id':'xray','action':'status'})
+        if not state.get('active'):raise ValueError('خط پروکسی روی سرور مرکزی فعال نیست')
     if new_location not in ("iran","abroad"):raise ValueError("موقعیت سرور باید ایران یا خارج باشد")
     if auto_geoip:
         try:
@@ -1766,9 +1956,9 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
     if new_proxy_id:
         proxy=servers.get(new_proxy_id)
         if not proxy or new_proxy_id==server_id:raise ValueError("سرور پروکسی باید از فهرست انتخاب شود و با مقصد فرق کند")
-        if proxy.get("proxy_server_id"):raise ValueError("زنجیرهٔ پروکسی SSH بیش از یک مرحله پشتیبانی نمی‌شود")
-    candidate={**current,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,"location":new_location}
-    connection_unchanged=all(candidate.get(k)==current.get(k) for k in ("host","user","proxy_server_id"))
+        if proxy.get("proxy_server_id") or proxy.get('proxy_line_id'):raise ValueError("زنجیرهٔ پروکسی SSH بیش از یک مرحله پشتیبانی نمی‌شود")
+    candidate={**current,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,'proxy_line_id':new_proxy_line_id,"location":new_location}
+    connection_unchanged=all(candidate.get(k)==current.get(k) for k in ("host","user","proxy_server_id","proxy_line_id"))
     unchanged=connection_unchanged and new_location==current.get("location","abroad") and bool(auto_geoip)==bool(current.get("auto_geoip",1)) and (not auto_geoip or (current.get("geoip_host")==new_host and current.get("geo_latitude") is not None and current.get("geo_longitude") is not None))
     geo_values=(geoip_result["country_code"],geoip_result["country_name"],geoip_result["city"],geoip_result["latitude"],geoip_result["longitude"]) if geoip_result else ((current.get("geo_country_code"),current.get("geo_country_name"),current.get("geo_city"),current.get("geo_latitude"),current.get("geo_longitude")) if new_host==old_host else (None,None,None,None,None))
     geoip_host=new_host if geoip_result else (current.get("geoip_host","") if new_host==old_host else "")
@@ -1793,8 +1983,8 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
     probe=subprocess.run(ssh_argv(candidate)+["true"],capture_output=True,text=True,timeout=25)
     if probe.returncode:raise RuntimeError("اتصال SSH با IP، کاربر و پراکسی جدید برقرار نشد؛ اطلاعات ذخیره نشدند: "+(probe.stderr or probe.stdout)[-800:])
     dependents=[s for s in servers.values() if s["id"]!=server_id and s.get("proxy_server_id")==server_id]
-    previous_connection={k:current.get(k,"") for k in ("host","user","proxy_server_id","location","auto_geoip","geoip_host","geo_country_code","geo_country_name","geo_city","geo_latitude","geo_longitude")}
-    with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(new_host,new_user,new_proxy_id,new_location,int(auto_geoip),geoip_host,*geo_values,server_id))
+    previous_connection={k:current.get(k,"") for k in ("host","user","proxy_server_id","proxy_line_id","location","auto_geoip","geoip_host","geo_country_code","geo_country_name","geo_city","geo_latitude","geo_longitude")}
+    with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,proxy_line_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(new_host,new_user,new_proxy_id,new_proxy_line_id,new_location,int(auto_geoip),geoip_host,*geo_values,server_id))
     endpoints=[];applied=[]
     try:
         servers={s["id"]:s for s in server_rows()}
@@ -1830,10 +2020,10 @@ def update_server_host(server_id,new_host,new_user=None,new_proxy_id=None,passwo
                 if sid=="local":update_tunnel({**before,"id":tid})
                 else:server_remote(srv,{"op":"update","data":{**before,"id":tid}})
             except Exception as rollback:rollback_errors.append(f"{sid}/{tid}: {rollback}")
-        with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(previous_connection["host"],previous_connection["user"],previous_connection["proxy_server_id"],previous_connection["location"],previous_connection["auto_geoip"],previous_connection["geoip_host"],previous_connection["geo_country_code"],previous_connection["geo_country_name"],previous_connection["geo_city"],previous_connection["geo_latitude"],previous_connection["geo_longitude"],server_id))
+        with db() as c:c.execute("UPDATE servers SET host=?,user=?,proxy_server_id=?,proxy_line_id=?,location=?,auto_geoip=?,geoip_host=?,geo_country_code=?,geo_country_name=?,geo_city=?,geo_latitude=?,geo_longitude=? WHERE id=?",(previous_connection["host"],previous_connection["user"],previous_connection["proxy_server_id"],previous_connection["proxy_line_id"],previous_connection["location"],previous_connection["auto_geoip"],previous_connection["geoip_host"],previous_connection["geo_country_code"],previous_connection["geo_country_name"],previous_connection["geo_city"],previous_connection["geo_latitude"],previous_connection["geo_longitude"],server_id))
         suffix=("؛ بازگردانی ناقص: "+" | ".join(rollback_errors)) if rollback_errors else ""
         raise RuntimeError("به‌روزرسانی اتصال سرور ناموفق شد؛ تغییر اتصال و تونل‌های انجام‌شده برگردانده شدند: "+str(error)+suffix)
-    return {"ok":True,"server":server_id,"old_host":old_host,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,"location":new_location,"geoip":geoip_result,"geoip_error":geoip_error,"updated_tunnels":len({x[2] for x in endpoints}),"updated_endpoints":len(endpoints),"restarted_endpoints":len(endpoints),"unavailable_servers":[]}
+    return {"ok":True,"server":server_id,"old_host":old_host,"host":new_host,"user":new_user,"proxy_server_id":new_proxy_id,'proxy_line_id':new_proxy_line_id,"location":new_location,"geoip":geoip_result,"geoip_error":geoip_error,"updated_tunnels":len({x[2] for x in endpoints}),"updated_endpoints":len(endpoints),"restarted_endpoints":len(endpoints),"unavailable_servers":[]}
 
 def server(host,port):
     try:ipaddress.ip_address(host)
@@ -1926,6 +2116,21 @@ def server(host,port):
                 server_id=parse_qs(self.path.partition("?")[2]).get("server_id",["local"])[0]
                 if server_id!="local" and not ID.fullmatch(server_id):return self.send(400,{"error":"invalid server id"})
                 return self.send(200,{"items":forward_rows(),"service":forward_service_status(server_id)})
+            if route=="/api/v1/proxy-lines":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:return self.send(200,{'items':proxy_line_summaries(),'service':privileged({'op':'xray-config','id':'xray','action':'status'})})
+                except Exception as e:return self.send(502,{'error':str(e)})
+            if route=="/api/v1/proxy-forwards":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                server_id=parse_qs(request.query).get('server_id',['local'])[0]
+                if server_id!='local' and not ID.fullmatch(server_id):return self.send(400,{'error':'invalid server id'})
+                service=privileged({'op':'xray-config','id':'xray','action':'status'}) if server_id=='local' else None
+                if server_id!='local':
+                    server=next((item for item in server_rows() if item['id']==server_id),None)
+                    if not server:return self.send(404,{'error':'server not found'})
+                    try:service=server_remote(server,{'op':'xray-config','action':'status'})
+                    except Exception as e:service={'ok':False,'active':False,'state':'unreachable','error':str(e)}
+                return self.send(200,{'items':[item for item in proxy_forward_rows() if item.get('server_id','local')==server_id],'service':service})
             if route=="/api/v1/tunnels/snapshot":
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
@@ -2036,6 +2241,24 @@ def server(host,port):
                     if result.get('error'):return self.send(400,result)
                     return self.send(202,result)
                 except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/proxy-lines":
+                if role!="admin":return self.send(403,{'error':'admin role required'})
+                try:
+                    data=self.body();action=data.get('action')
+                    if action=='create':return self.send(201,create_proxy_line(data.get('id',''),data.get('link','')))
+                    if action=='delete':return self.send(200,delete_proxy_line(data.get('id','')))
+                    raise ValueError('عملیات خط پروکسی نامعتبر است')
+                except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/proxy-forwards":
+                if role!="admin":return self.send(403,{'error':'admin role required'})
+                try:
+                    data=self.body();action=data.get('action');server_id=data.get('server_id','local')
+                    if action in ('create','update'):
+                        result=save_proxy_forward(data,action)
+                        return self.send(201 if action=='create' else 200,result)
+                    if action=='delete':return self.send(200,delete_proxy_forward(data.get('id',''),server_id))
+                    raise ValueError('عملیات فوروارد خط پروکسی نامعتبر است')
+                except Exception as e:return self.send(400,{'error':str(e)})
             if self.path=="/api/v1/forwards":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 FORWARD_LOCK.acquire()
@@ -2125,19 +2348,26 @@ def server(host,port):
                         if not isinstance(host,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}",host):raise ValueError("آدرس سرور نامعتبر است")
                         current=next((x for x in server_rows() if x["id"]==ident),None)
                         if not current:raise ValueError("سرور پیدا نشد")
-                        user=data.get("user",current["user"]);proxy_id=data.get("proxy_server_id",current.get("proxy_server_id",""));password=data.get("ssh_password","");location=data.get("location",current.get("location","abroad"));auto_geoip=data.get("auto_geoip",bool(current.get("auto_geoip",1)))
+                        user=data.get("user",current["user"]);proxy_id=data.get("proxy_server_id",current.get("proxy_server_id",""));proxy_line_id=data.get('proxy_line_id',current.get('proxy_line_id',''));password=data.get("ssh_password","");location=data.get("location",current.get("location","abroad"));auto_geoip=data.get("auto_geoip",bool(current.get("auto_geoip",1)))
                         if not isinstance(user,str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}",user):raise ValueError("نام کاربری SSH نامعتبر است")
                         if not isinstance(proxy_id,str):raise ValueError("سرور پروکسی نامعتبر است")
+                        if not isinstance(proxy_line_id,str):raise ValueError('خط پروکسی نامعتبر است')
                         if not isinstance(password,str):raise ValueError("گذرواژه SSH نامعتبر است")
                         if not isinstance(auto_geoip,bool):raise ValueError("گزینهٔ GeoIP نامعتبر است")
-                        return self.send(200,update_server_host(ident,host,user,proxy_id,password,location,auto_geoip))
+                        return self.send(200,update_server_host(ident,host,user,proxy_id,password,location,auto_geoip,proxy_line_id))
                     if action=="add":
-                        host=data.get("host","");user=data.get("user","root");identity=data.get("identity","");proxy_id=data.get("proxy_server_id","");location=data.get("location","abroad")
+                        host=data.get("host","");user=data.get("user","root");identity=data.get("identity","");proxy_id=data.get("proxy_server_id","");proxy_line_id=data.get('proxy_line_id','');location=data.get("location","abroad")
                         auto_geoip=data.get("auto_geoip",True)
                         if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError("شناسه سرور نامعتبر است")
                         if not isinstance(host,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}",host):raise ValueError("آدرس سرور نامعتبر است")
                         if not isinstance(user,str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}",user):raise ValueError("نام کاربری SSH نامعتبر است")
                         if not isinstance(proxy_id,str):raise ValueError("سرور پروکسی نامعتبر است")
+                        if not isinstance(proxy_line_id,str):raise ValueError('خط پروکسی نامعتبر است')
+                        if proxy_id and proxy_line_id:raise ValueError('برای SSH فقط یک مسیر پروکسی انتخاب کن')
+                        if proxy_line_id:
+                            proxy_line(proxy_line_id)
+                            state=privileged({'op':'xray-config','id':'xray','action':'status'})
+                            if not state.get('active'):raise ValueError('خط پروکسی روی سرور مرکزی فعال نیست')
                         if location not in ("iran","abroad"):raise ValueError("موقعیت سرور باید ایران یا خارج باشد")
                         if not isinstance(auto_geoip,bool):raise ValueError("گزینهٔ GeoIP نامعتبر است")
                         geoip_result=None;geoip_error=""
@@ -2149,7 +2379,7 @@ def server(host,port):
                         if proxy_id:
                             proxy=next((x for x in server_rows() if x["id"]==proxy_id),None)
                             if not proxy or proxy_id==ident:raise ValueError("سرور پروکسی باید از قبل ثبت شده باشد و با مقصد فرق کند")
-                            if proxy.get("proxy_server_id"):raise ValueError("سرور پروکسی انتخابی خودش نباید از پروکسی دیگری عبور کند")
+                            if proxy.get("proxy_server_id") or proxy.get('proxy_line_id'):raise ValueError("سرور پروکسی انتخابی خودش نباید از پروکسی دیگری عبور کند")
                         with db() as c:
                             if c.execute("SELECT 1 FROM servers WHERE id=?",(ident,)).fetchone():raise ValueError("شناسه سرور تکراری است")
                         private_key=data.get("identity_key","")
@@ -2171,13 +2401,13 @@ def server(host,port):
                             try:keypath.relative_to(BASE.resolve())
                             except ValueError:raise ValueError(f"کلید خصوصی را داخل مسیر دادهٔ پنل قرار بده: {BASE}/ssh-keys")
                         elif data.get("ssh_password"):
-                            srv=bootstrap_server({"id":ident,"host":host,"user":user,"identity":"","proxy_server_id":proxy_id},data["ssh_password"])
+                            srv=bootstrap_server({"id":ident,"host":host,"user":user,"identity":"","proxy_server_id":proxy_id,'proxy_line_id':proxy_line_id},data["ssh_password"])
                             identity=srv["identity"]
                         else:raise ValueError("گذرواژهٔ SSH یا کلید خصوصی را وارد کن")
                         geo_values=(geoip_result["country_code"],geoip_result["country_name"],geoip_result["city"],geoip_result["latitude"],geoip_result["longitude"]) if geoip_result else (None,None,None,None,None)
-                        with db() as c:c.execute("INSERT INTO servers(id,host,user,identity,proxy_server_id,location,auto_geoip,geoip_host,geo_country_code,geo_country_name,geo_city,geo_latitude,geo_longitude) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(ident,host,user,identity,proxy_id,location,int(auto_geoip),host if geoip_result else "",*geo_values))
+                        with db() as c:c.execute("INSERT INTO servers(id,host,user,identity,proxy_server_id,proxy_line_id,location,auto_geoip,geoip_host,geo_country_code,geo_country_name,geo_city,geo_latitude,geo_longitude) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(ident,host,user,identity,proxy_id,proxy_line_id,location,int(auto_geoip),host if geoip_result else "",*geo_values))
                         if data.get("install"):
-                            srv={"id":ident,"host":host,"user":user,"identity":identity,"proxy_server_id":proxy_id}
+                            srv={"id":ident,"host":host,"user":user,"identity":identity,"proxy_server_id":proxy_id,'proxy_line_id':proxy_line_id}
                             try:return self.send(201,{"ok":True,"server":ident,"location":location,"geoip":geoip_result,"geoip_error":geoip_error,"install":install_remote(srv)})
                             except Exception as e:return self.send(502,{"error":f"سرور ثبت شد اما نصب ناموفق بود: {e}"})
                         return self.send(201,{"ok":True,"server":ident,"location":location,"geoip":geoip_result,"geoip_error":geoip_error})
@@ -2186,6 +2416,8 @@ def server(host,port):
                         if not srv:raise ValueError("سرور پیدا نشد")
                         dependents=[x["id"] for x in server_rows() if x.get("proxy_server_id")==ident]
                         if dependents:raise ValueError("ابتدا سرورهای عبوری را از پروکسی جدا کن: "+", ".join(dependents))
+                        proxy_forwards=[x['id'] for x in proxy_forward_rows() if x.get('server_id')==ident]
+                        if proxy_forwards:raise ValueError('ابتدا فورواردهای پروکسی این سرور را حذف کن: '+', '.join(proxy_forwards))
                         remove_bootstrap_key(srv)
                         with db() as c:removed=c.execute("DELETE FROM servers WHERE id=?",(ident,)).rowcount
                         if not removed:raise ValueError("سرور پیدا نشد")

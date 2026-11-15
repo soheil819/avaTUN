@@ -315,6 +315,164 @@ def haproxy_apply(req):
     content=base.rstrip()+'\n\n'+'\n'.join(lines)+'\n'
     haproxy_commit(append_stats(content),previous,active)
     return {'ok':True,'active':True,'status':'active'}
+
+def xray_bound_sockets():
+    rows=[]
+    for family in ('tcp','tcp6','udp','udp6'):
+        path=Path('/proc/net')/family
+        if not path.is_file():continue
+        proto='tcp' if family.startswith('tcp') else 'udp'
+        ipv6=family.endswith('6')
+        try:lines=path.read_text().splitlines()[1:]
+        except OSError:continue
+        for line in lines:
+            fields=line.split()
+            if len(fields)<10:continue
+            if proto=='tcp' and fields[3]!='0A':continue
+            local=fields[1].split(':')
+            if len(local)!=2:continue
+            try:
+                raw=bytes.fromhex(local[0]);port=int(local[1],16)
+                if not port:continue
+                if ipv6:address=ipaddress.IPv6Address(b''.join(raw[i:i+4][::-1] for i in range(0,16,4)))
+                else:address=ipaddress.IPv4Address(raw[::-1])
+                rows.append((proto,address,port,fields[9]))
+            except (ValueError,IndexError):continue
+    return rows
+
+def xray_container_ports():
+    engine=shutil.which('docker')
+    if not engine:return []
+    try:
+        listed=subprocess.run([engine,'ps','-q'],capture_output=True,text=True,timeout=5)
+        containers=listed.stdout.split() if listed.returncode==0 else []
+        if not containers:return []
+        inspected=subprocess.run([engine,'inspect','--format={{.Id}}|{{.Name}}|{{json .NetworkSettings.Ports}}',*containers],capture_output=True,text=True,timeout=10)
+        if inspected.returncode:return []
+    except (OSError,subprocess.SubprocessError):return []
+    rows=[]
+    for line in inspected.stdout.splitlines():
+        parts=line.split('|',2)
+        if len(parts)!=3:continue
+        ident,name,raw=parts
+        try:mappings=json.loads(raw) or {}
+        except ValueError:continue
+        for container_port,bindings in mappings.items():
+            if not isinstance(bindings,list):continue
+            try:default_proto=container_port.rsplit('/',1)[1]
+            except IndexError:default_proto='tcp'
+            if default_proto not in ('tcp','udp'):continue
+            for binding in bindings:
+                if not isinstance(binding,dict):continue
+                try:
+                    address=ipaddress.ip_address(binding.get('HostIp') or '0.0.0.0')
+                    port=int(binding.get('HostPort',''))
+                except (ValueError,TypeError):continue
+                if not 1<=port<=65535:continue
+                owner='docker container '+(name.lstrip('/') or ident[:12])+f' ({container_port})'
+                rows.append((default_proto,address,port,owner))
+    return rows
+
+def xray_listener_overlap(first,second):
+    if first.version==second.version:return first.is_unspecified or second.is_unspecified or first==second
+    v6=first if first.version==6 else second
+    v4=first if first.version==4 else second
+    if v6.ipv4_mapped:return v4.is_unspecified or v6.ipv4_mapped==v4
+    if not v6.is_unspecified:return False
+    try:return Path('/proc/sys/net/ipv6/bindv6only').read_text().strip()!='1'
+    except OSError:return True
+
+def check_xray_listener_conflicts(config):
+    requested=[]
+    for inbound in config.get('inbounds',[]):
+        if not isinstance(inbound,dict):continue
+        settings=inbound.get('settings') if isinstance(inbound.get('settings'),dict) else {}
+        try:address=ipaddress.ip_address(inbound.get('listen','0.0.0.0'));port=integer(inbound.get('port'),1,65535,'Xray listener port')
+        except (ValueError,TypeError):continue
+        network=settings.get('allowedNetwork')
+        protocols=[network] if network in ('tcp','udp') else (['tcp'] if inbound.get('protocol')=='socks' and not settings.get('udp') else ['tcp','udp'])
+        requested.extend((proto,address,port) for proto in protocols)
+    bound=xray_bound_sockets()+xray_container_ports()
+    collisions=[(proto,address,port,inode) for proto,address,port in requested for bproto,baddress,bport,inode in bound
+                if proto==bproto and port==bport and xray_listener_overlap(address,baddress)]
+    if not collisions:return
+    managed=subprocess.run(['/usr/bin/systemctl','show','tunnelmgr-xray.service','-p','MainPID','--value'],capture_output=True,text=True,timeout=8)
+    try:managed_pid=int(managed.stdout.strip())
+    except ValueError:managed_pid=0
+    wanted={item[3] for item in collisions if item[3].isdigit()};owners={}
+    try:processes=Path('/proc').iterdir()
+    except OSError:processes=()
+    if wanted:
+        for process in processes:
+            if not process.name.isdigit() or int(process.name)==managed_pid:continue
+            try:fds=(process/'fd').iterdir()
+            except OSError:continue
+            try:
+                for fd in fds:
+                    try:link=os.readlink(fd)
+                    except OSError:continue
+                    match=re.fullmatch(r'socket:\[(\d+)\]',link)
+                    if match and match.group(1) in wanted:
+                        try:name=(process/'comm').read_text().strip()
+                        except OSError:name='process '+process.name
+                        owners[match.group(1)]=(int(process.name),name)
+            except OSError:continue
+    details=[]
+    for proto,address,port,inode in collisions:
+        owner=owners.get(inode)
+        suffix=f' ({inode})' if isinstance(inode,str) and not inode.isdigit() else (f' (PID {owner[0]}, {owner[1]})' if owner else '')
+        detail=f'{proto.upper()} {address}:{port}{suffix}'
+        if detail not in details:details.append(detail)
+    raise ValueError('Xray listener port conflict: '+'; '.join(details)+'. Choose a free IP/port. The existing service was left untouched.')
+
+def xray_config(req):
+    action=req.get('action','apply');unit='tunnelmgr-xray.service'
+    directory=Path('/var/lib/tunnelmgr/xray');path=directory/'config.json'
+    if action=='status':
+        result=subprocess.run(['/usr/bin/systemctl','show',unit,'-p','ActiveState','-p','Result','--no-pager'],capture_output=True,text=True,timeout=8)
+        values=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+        return {'ok':True,'active':values.get('ActiveState')=='active','state':values.get('ActiveState','unknown'),'result':values.get('Result','')}
+    if action=='remove':
+        stopped=subprocess.run(['/usr/bin/systemctl','disable','--now',unit],capture_output=True,text=True,timeout=35)
+        if stopped.returncode:
+            state=subprocess.run(['/usr/bin/systemctl','show',unit,'-p','LoadState','--value'],capture_output=True,text=True,timeout=8).stdout.strip()
+            if state!='not-found':raise RuntimeError((stopped.stderr or stopped.stdout).strip() or 'could not stop managed Xray')
+        path.unlink(missing_ok=True)
+        return {'ok':True,'active':False,'state':'removed'}
+    if action!='apply':raise ValueError('invalid managed Xray action')
+    config=req.get('config')
+    if not isinstance(config,dict) or not isinstance(config.get('inbounds'),list) or not isinstance(config.get('outbounds'),list):raise ValueError('invalid managed Xray config')
+    if len(config['inbounds'])>256 or len(config['outbounds'])>128:raise ValueError('managed Xray config is too large')
+    if not config['inbounds'] or not config['outbounds']:raise ValueError('managed Xray config must contain listeners and outbounds')
+    check_xray_listener_conflicts(config)
+    directory.mkdir(mode=0o700,parents=True,exist_ok=True);os.chown(directory,APP_UID,pwd.getpwnam('tunnelmgr').pw_gid);os.chmod(directory,0o700)
+    encoded=(json.dumps(config,ensure_ascii=False,separators=(',',':'))+'\n').encode()
+    if len(encoded)>1_000_000:raise ValueError('managed Xray config exceeds 1 MB')
+    previous=path.read_bytes() if path.is_file() else None
+    fd,pending=tempfile.mkstemp(prefix='.config-',suffix='.json',dir=directory)
+    try:
+        os.fchmod(fd,0o600);os.fchown(fd,APP_UID,pwd.getpwnam('tunnelmgr').pw_gid)
+        with os.fdopen(fd,'wb') as stream:stream.write(encoded);stream.flush();os.fsync(stream.fileno())
+        check=subprocess.run(['/usr/bin/python3','/opt/tunnelmgr/tunnelmgr/xray_runtime.py','test',pending],capture_output=True,text=True,timeout=35)
+        if check.returncode:raise ValueError((check.stderr or check.stdout).strip()[-2500:] or 'Xray rejected the managed config')
+        os.replace(pending,path)
+        os.chown(path,APP_UID,pwd.getpwnam('tunnelmgr').pw_gid);os.chmod(path,0o600)
+        active=subprocess.run(['/usr/bin/systemctl','is-active','--quiet',unit]).returncode==0
+        command=['/usr/bin/systemctl','restart',unit] if active else ['/usr/bin/systemctl','enable','--now',unit]
+        result=subprocess.run(command,capture_output=True,text=True,timeout=40)
+        if result.returncode:
+            detail=(result.stderr or result.stdout).strip()
+            if not detail:detail=subprocess.run(['/usr/bin/journalctl','-u',unit,'-n','18','-o','cat','--no-pager'],capture_output=True,text=True,timeout=8).stdout.strip()
+            if previous is None:
+                subprocess.run(['/usr/bin/systemctl','disable','--now',unit],capture_output=True,timeout=20)
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(previous);os.chown(path,APP_UID,pwd.getpwnam('tunnelmgr').pw_gid);os.chmod(path,0o600)
+                subprocess.run(['/usr/bin/systemctl','restart',unit],capture_output=True,timeout=30)
+            raise RuntimeError((detail or 'managed Xray did not start')[-2500:])
+        return {'ok':True,'active':True,'state':'active','config_valid':True}
+    finally:Path(pending).unlink(missing_ok=True)
+
 def handle(c):
     try:
         _,uid,_=struct.unpack('3i',c.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,struct.calcsize('3i')))
@@ -383,6 +541,7 @@ def handle(c):
                 return send(c,{'ok':True})
             raise ValueError('invalid secret action')
         if op=='profile':return send(c,manage(req,ident))
+        if op=='xray-config':return send(c,xray_config(req))
         if op in ('mesh-apply','mesh-status'):
             if not os.path.isfile('/etc/tunnelmgr/mesh/'+ident+'.json'):raise ValueError('unknown deployment profile')
             unit='tunnelmgr-mesh@'+ident+'.service'

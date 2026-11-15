@@ -205,6 +205,14 @@ install -d -o root -g root -m 0700 /etc/tunnelmgr/network
 install -d -o root -g root -m 0755 /etc/backhaul /var/lib/backhaul-manager /etc/swanctl/conf.d
 install -d -o root -g root -m 0755 /var/lib/letsencrypt /var/log/letsencrypt /var/cache/letsencrypt
 install -m 0644 "$ROOT/tunnelmgr/network.py" /opt/tunnelmgr/tunnelmgr/
+install -m 0644 "$ROOT/tunnelmgr/xray_profiles.py" "$ROOT/tunnelmgr/xray_runtime.py" /opt/tunnelmgr/tunnelmgr/
+install -m 0755 "$ROOT/tunnelmgr/socks5_connect.py" /opt/tunnelmgr/tunnelmgr/socks5_connect.py
+install -d -o root -g root -m 0755 /opt/tunnelmgr/scripts
+install -m 0755 "$ROOT/scripts/install-xray-core.py" /opt/tunnelmgr/scripts/install-xray-core.py
+install -d -o root -g root -m 0755 /opt/tunnelmgr/bin
+python3 /opt/tunnelmgr/scripts/install-xray-core.py "$ROOT/runtime"
+install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-xray.service" /etc/systemd/system/tunnelmgr-xray.service
+install -d -o tunnelmgr -g tunnelmgr -m 0700 /var/lib/tunnelmgr/xray /var/lib/tunnelmgr/proxy-lines
 install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-network@.service" /etc/systemd/system/
 install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-openvpn@.service" /etc/systemd/system/
 install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-ocserv@.service" "$ROOT/packaging/systemd/tunnelmgr-openconnect@.service" /etc/systemd/system/
