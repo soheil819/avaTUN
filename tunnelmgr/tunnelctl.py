@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
+from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
 APP_VERSION="0.2.50"
@@ -2170,6 +2171,16 @@ def server(host,port):
             value=morsel.value; entry=SESSIONS.get(value)
             if not entry:return None
             if entry['expires']<time.time():SESSIONS.pop(value,None);return None
+            if entry.get('telegram_id') and entry.get('telegram_role') in ('admin','viewer'):
+                try:
+                    config=load_telegram_miniapp_config()
+                    current=telegram_miniapp_role(config,entry['telegram_id'])
+                except (OSError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+                    current=None
+                if current!=entry['telegram_role']:
+                    SESSIONS.pop(value,None)
+                    return None
+                return current
             with db() as c:account_row=c.execute("SELECT role,totp_enabled FROM accounts WHERE name=?",(entry['name'],)).fetchone()
             if not account_row:SESSIONS.pop(value,None);return None
             if account_row['role']=='admin' and not account_row['totp_enabled'] and entry['name']!='avatun-telegram':return 'mfa_setup'
@@ -2188,6 +2199,10 @@ def server(host,port):
             from urllib.parse import urlsplit, parse_qs
             request=urlsplit(self.path)
             route=request.path
+            if route=="/telegram-miniapp":
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/telegram-miniapp.html"
+                if not f.is_file():return self.send(404,{"error":"Telegram Mini App is not installed"})
+                return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
             if route=="/":
                 # Older bookmarks may still append credentials to the panel URL.
                 # Never keep those credentials in the address bar or access logs.
@@ -2329,6 +2344,19 @@ def server(host,port):
                 except Exception as e:return self.send(502,{"error":str(e)})
             return self.send(404,{"error":"not found"})
         def do_POST(self):
+            if self.path=="/api/v1/telegram/miniapp/auth":
+                try:
+                    data=self.body();init_data=data.get('init_data')
+                    config=load_telegram_miniapp_config()
+                    verified=verify_init_data(init_data,config['bot_token'])
+                    user_id=verified['user_id'];mini_role=telegram_miniapp_role(config,user_id)
+                    if mini_role is None:return self.send(403,{'error':'این حساب تلگرام برای Mini App مجاز نیست.'})
+                    token=_new_session('avatun-telegram',mini_role,True)
+                    SESSIONS[token].update({'telegram_id':user_id,'telegram_role':mini_role})
+                    self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.session_cookie(token)
+                    payload=json.dumps({'ok':True,'role':mini_role,'telegram_id':user_id,'display_name':str((verified.get('user') or {}).get('first_name') or '')[:80]},ensure_ascii=False).encode();self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as e:
+                    return self.send(401,{'error':str(e)[:180]})
             if self.path=="/api/v1/auth/login":
                 try:
                     data=self.body();name=data.get("username","");password=data.get("password","")

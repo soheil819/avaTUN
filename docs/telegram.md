@@ -104,11 +104,22 @@ message, Telegram cannot deliver private notifications. When webhook mode is
 active, Telegram delivers updates to the HTTPS endpoint and the bot no longer
 uses `getUpdates` polling.
 
-Commands: `/start`, `/status`, `/servers`, `/tunnels`, `/hardware`, `/report`,
+Commands: `/start`, `/app`, `/status`, `/servers`, `/tunnels`, `/hardware`, `/report`,
 `/help`, `/cancel`. Administrators also have `/forwards`, `/update`, `/audit`,
 and `/settings`. Legacy `/tunnel_list` and `/haproxy` aliases still work.
 Use `journalctl -u avatun-telegram` for logs. Credentials are redacted from
 outgoing error messages and network exceptions are logged by type only.
+
+### Telegram Mini App
+
+`/app` opens the standalone Telegram Mini App at `/telegram-miniapp`. The Mini
+App is separate from the main web-panel UI and authenticates Telegram's signed
+`initData` server-side before issuing a short-lived panel session. It exposes
+the live dashboard, server health and resources, tunnel start/stop/rebuild,
+forward management, activity, and administrator update controls. The URL must
+be HTTPS; by default the bot derives it from `panel_url`. Only Telegram IDs in
+`admins` or `viewers` can authenticate, and the role is rechecked on every
+request.
 
 Run the regression checks with `python3 scripts/check-telegram.py`.
 

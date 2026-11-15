@@ -568,6 +568,33 @@ class Bot(ResourceMixin, ConsoleMixin):
         os.chmod(temporary, 0o600)
         os.replace(temporary, self.status_path)
 
+    def mini_app_url(self):
+        """Return the public Telegram Mini App URL when it is safe to expose."""
+        value = self.config.get('mini_app_url')
+        if not value:
+            value = self.config.get('panel_url', '').rstrip('/') + '/telegram-miniapp'
+        try:
+            parsed = urllib.parse.urlsplit(value)
+        except ValueError:
+            return ''
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return ''
+        return value
+
+    def mini_app(self, user_id):
+        """Send a focused launch card without replacing the bot console message."""
+        url = self.mini_app_url()
+        if not url:
+            self.send(user_id, 'برای بازکردن Mini App، آدرس HTTPS پنل را در تنظیمات ربات قرار بده.')
+            return
+        self.telegram.request('sendMessage', {
+            'chat_id': user_id,
+            'text': '🚀 مرکز کنترل avaTUN\n\nداشبورد زنده، مدیریت سرورها و تونل‌ها، منابع، فورواردها و عملیات اجرایی را داخل تلگرام باز کن.',
+            'protect_content': True,
+            'link_preview_options': {'is_disabled': True},
+            'reply_markup': {'inline_keyboard': [[{'text': 'باز کردن Mini App', 'web_app': {'url': url}}]]}
+        })
+
     def scrub(self, text):
         text = str(text)
         for key in ('bot_token', 'panel_password'):
@@ -599,7 +626,13 @@ class Bot(ResourceMixin, ConsoleMixin):
         return {'text':digits(label)[:60], 'callback_data':token}
 
     def home(self, user_id):
-        return self.show_screen(user_id, 'overview')
+        result = self.show_screen(user_id, 'overview')
+        if self.mini_app_url():
+            key = 'miniapp-prompt:' + str(user_id)
+            if time.time() - float(self.state.get(key, 0) or 0) > 3600:
+                self.mini_app(user_id)
+                self.state.put(key, time.time())
+        return result
 
     def status(self, user_id):
         return self.show_screen(user_id, 'overview')
@@ -873,6 +906,10 @@ class Bot(ResourceMixin, ConsoleMixin):
         if message:
             state['message']=message
         delivery_key = self.widget_delivery_key(user_id)
+        delivery_failure = self.state.get(delivery_key) or {}
+        if delivery_failure.get('retry_at', 0) > time.time():
+            self.widget_delivery_fallback(user_id, state)
+            return
         # Telegram cannot replace the HTML of an existing widget. Send a new
         # message after a layout upgrade instead of editing the old widget's data.
         layout = hashlib.sha256(CONTROL_WIDGET_HTML.encode()).hexdigest()
@@ -902,7 +939,7 @@ class Bot(ResourceMixin, ConsoleMixin):
         except RuntimeError as error:
             if 'INPUT_MEDIA_WIDGET_NOT_ALLOWED' not in str(error):raise
             logging.warning('Telegram rejected sendWidget with INPUT_MEDIA_WIDGET_NOT_ALLOWED; retry after 300 seconds.')
-            self.state.put(delivery_key, {'error':'INPUT_MEDIA_WIDGET_NOT_ALLOWED','retry_at':0})
+            self.state.put(delivery_key, {'error':'INPUT_MEDIA_WIDGET_NOT_ALLOWED','retry_at':time.time()+300})
             self.widget_delivery_fallback(user_id,state)
             return
         self.state.put(delivery_key, {'retry_at':0})
@@ -1319,6 +1356,9 @@ class Bot(ResourceMixin, ConsoleMixin):
             page='forwards' if action=='forwards' and payload.get('server_id') else widget_pages[action]
             self.show_screen(user_id,page,server_id=payload.get('server_id','all'))
             return
+        if action == 'mini-app':
+            self.mini_app(user_id)
+            return
         if action in ('server','tunnel','diagnose','forward'):
             page={'server':'server','tunnel':'tunnel','diagnose':'tunnel','forward':'forward'}[action]
             selected=payload.get('server_id') if action=='server' else payload.get('tunnel_id') if action in ('tunnel','diagnose') else payload.get('rule_id')
@@ -1522,7 +1562,7 @@ class Bot(ResourceMixin, ConsoleMixin):
                 command = text.split()[0].split('@')[0] if text else ''
                 if not text.startswith('/') and self.users.get(sender) == 'admin' and self.wizard_text(sender, text):
                     return
-                actions = {'/start': 'home', '/help': 'help', '/cancel':'cancel', '/status': 'status', '/servers': 'servers',
+                actions = {'/start': 'home', '/app': 'mini-app', '/help': 'help', '/cancel':'cancel', '/status': 'status', '/servers': 'servers',
                            '/tunnels': 'tunnel-widget', '/tunnel-list': 'tunnels', '/tunnel_list': 'tunnels',
                            '/hardware': 'hardware', '/forwards': 'forwards',
                            '/haproxy': 'forwards',
