@@ -60,14 +60,21 @@ For a source checkout already on the server, `sudo ./install.sh` runs the same i
 
 ### Remove avaTUN
 
-To remove the panel from this host, run `sudo ./uninstall.sh` and type
-`REMOVE AVATUN` at the confirmation prompt. This stops avaTUN services,
-including its managed virtual-network service instances, then removes the
-panel, bot, TLS configuration, and avaTUN state. It does not remove system
-packages or shared services such as FRR, HAProxy, Certbot, or StrongSwan; it
-also preserves firewall rules, swap, kernel modules, the `tunnelmgr` account,
-and installations on remote servers. Active tunnels managed by this panel on
-this host will be stopped.
+Run the uninstaller from the avaTUN source directory on the host you want to
+remove it from:
+
+```sh
+sudo ./uninstall.sh
+```
+
+Read the displayed scope, then type `REMOVE AVATUN` to confirm. The script
+stops the panel, Telegram bot, and avaTUN-managed local tunnel services, then
+removes the panel files, configuration, TLS data, and local application state.
+This stops active tunnels managed by avaTUN on that host. It does not remove
+system packages or shared services such as FRR, HAProxy, Certbot, or
+StrongSwan; it preserves firewall rules, swap, kernel modules, the
+`tunnelmgr` account, and avaTUN installations on remote servers. To remove a
+remote installation, run its own uninstaller on that remote host.
 
 The installer includes the supplied, checksum-verified Backhaul TUN core and its manager for Linux amd64. It installs them on first setup and preserves an already installed manager/core on later panel updates. Other CPU architectures still install avaTUN, but need a matching Backhaul core package before they can create Backhaul TUN links. The core's license and third-party notices are in `vendor/backhaul/`.
 
