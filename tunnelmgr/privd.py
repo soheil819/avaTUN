@@ -5,7 +5,7 @@ from network import verify_tunnel_link, remove_managed_link
 import tomllib
 import tempfile
 from haproxy_stats import append_block as append_stats, without_block as without_stats, settings as stats_settings, PORT as STATS_PORT
-import ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
+import base64, http.client, ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
 from pathlib import Path
 SOCKET='/run/tunnelmgr/privd.sock'
 ID=re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
@@ -191,22 +191,31 @@ def haproxy_apply(req):
     action=req.get('action','status')
     if action=='status':
         p=subprocess.run(['/usr/bin/systemctl','is-active','haproxy.service'],capture_output=True,text=True,timeout=8)
-        active=p.stdout.strip()=='active';paths={}
+        active=p.stdout.strip()=='active';paths={};forwards={}
         if active:
             try:
-                client=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);client.settimeout(1.5);client.connect('/run/haproxy/admin.sock');client.sendall(b'show stat\n');data=b''
-                while len(data)<2_000_000:
-                    chunk=client.recv(65536)
-                    if not chunk:break
-                    data+=chunk
-                    if data.endswith(b'\n\n'):break
-                client.close();rows=list(csv.reader(data.decode(errors='replace').splitlines()))
-                for row in rows[1:]:
-                    if len(row)<18 or not row[0].startswith('tm_pool_') or row[1] in ('BACKEND','FRONTEND'):continue
-                    match=re.fullmatch(r'path[0-9]+_(.+)',row[1])
-                    if match:paths.setdefault(row[0][8:],{})[match[1]]=row[17]
-            except Exception:paths={}
-        return {'ok':p.returncode==0,'active':active,'status':p.stdout.strip() or p.stderr.strip(),'paths':paths}
+                auth=stats_settings();token=base64.b64encode((auth['username']+':'+auth['password']).encode()).decode()
+                client=http.client.HTTPConnection('127.0.0.1',STATS_PORT,timeout=1.5)
+                client.request('GET','/stats;csv',headers={'Authorization':'Basic '+token})
+                response=client.getresponse()
+                if response.status!=200:raise RuntimeError(f'HAProxy statistics returned HTTP {response.status}')
+                data=response.read(2_000_000);client.close();rows=list(csv.reader(data.decode(errors='replace').splitlines()));header=[]
+                for row in rows:
+                    if not row:continue
+                    if row[0].lstrip().startswith('#'):
+                        header=[name.strip().lstrip('#').strip() for name in row]
+                        continue
+                    if not header or len(row)<len(header):continue
+                    entry=dict(zip(header,row));pxname=entry.get('pxname','');svname=entry.get('svname','')
+                    if pxname.startswith('tm_fwd_') and svname=='FRONTEND':
+                        ident=pxname[len('tm_fwd_'):]
+                        try:forwards[ident]={'bytes_in':max(0,int(entry.get('bin','0'))),'bytes_out':max(0,int(entry.get('bout','0')))}
+                        except ValueError:continue
+                    if not pxname.startswith('tm_pool_') or svname in ('BACKEND','FRONTEND'):continue
+                    match=re.fullmatch(r'path[0-9]+_(.+)',svname)
+                    if match:paths.setdefault(pxname[8:],{})[match[1]]=entry.get('status','')
+            except Exception:paths={};forwards={}
+        return {'ok':p.returncode==0,'active':active,'status':p.stdout.strip() or p.stderr.strip(),'paths':paths,'forwards':forwards}
     if action=='ensure-stats':
         cfg=Path('/etc/haproxy/haproxy.cfg')
         if not cfg.is_file():raise ValueError('HAProxy configuration file is missing')
@@ -501,6 +510,25 @@ def handle(c):
             result=subprocess.run(args,capture_output=True,text=True,timeout=3)
             match=re.search(r'time[=<]([0-9.]+)\s*ms',result.stdout)
             return send(c,{'state':'up' if result.returncode==0 else 'down','reachable':result.returncode==0,'rtt_ms':float(match.group(1)) if match else None,'checked_at':int(time.time()),'probe_error':None if result.returncode==0 else (result.stderr or result.stdout).strip()[-500:]})
+        if op=='ipsec-stats':
+            local=str(ipaddress.ip_address(req.get('local','')));peer=str(ipaddress.ip_address(req.get('peer','')))
+            ipbin=shutil.which('ip') or '/usr/sbin/ip'
+            result=subprocess.run([ipbin,'-s','xfrm','state'],capture_output=True,text=True,timeout=8)
+            if result.returncode:raise RuntimeError(result.stderr.strip() or 'could not read IPsec state counters')
+            source=destination=None;current=None;rx=tx=matches=0
+            def collect():
+                nonlocal rx,tx,matches
+                if source is None or destination is None or current is None:return
+                if source==local and destination==peer:tx+=current;matches+=1
+                elif source==peer and destination==local:rx+=current;matches+=1
+            for line in result.stdout.splitlines():
+                pair=re.search(r'^\s*src\s+(\S+)\s+dst\s+(\S+)',line)
+                if pair:
+                    collect();source=pair.group(1);destination=pair.group(2);current=None;continue
+                lifetime=re.search(r'lifetime current:\s*(\d+)\s*\(bytes\)',line)
+                if lifetime:current=int(lifetime.group(1))
+            collect()
+            return send(c,{'ok':True,'available':matches>0,'rx_bytes':rx,'tx_bytes':tx,'matched_states':matches})
         if op in ('interface-stats','send-erspan-probe'):
             interface=req.get('interface')
             if not isinstance(interface,str) or not NAME.fullmatch(interface):raise ValueError('invalid interface')
@@ -508,7 +536,7 @@ def handle(c):
             if not device.is_dir():raise ValueError('interface is not present')
             stats=device/'statistics'
             if op=='interface-stats':
-                return send(c,{'ok':True,'interface':interface,'rx_packets':int((stats/'rx_packets').read_text()),'rx_bytes':int((stats/'rx_bytes').read_text())})
+                return send(c,{'ok':True,'available':True,'interface':interface,'rx_packets':int((stats/'rx_packets').read_text()),'tx_packets':int((stats/'tx_packets').read_text()),'rx_bytes':int((stats/'rx_bytes').read_text()),'tx_bytes':int((stats/'tx_bytes').read_text())})
             address=bytes.fromhex((device/'address').read_text().strip().replace(':',''))
             if len(address)!=6:raise ValueError('interface has no Ethernet address')
             frame=b'\xff'*6+address+b'\x88\xb5'+b'TUNNELMGR-ERSPAN-PROBE'+os.urandom(8)

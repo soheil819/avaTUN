@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.4"
+APP_VERSION="1.0.0.5"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -61,6 +61,7 @@ def db():
     c.execute("CREATE TABLE IF NOT EXISTS proxy_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS traffic_counters(scope TEXT NOT NULL,entity_id TEXT NOT NULL,server_id TEXT NOT NULL,rx_raw INTEGER NOT NULL,tx_raw INTEGER NOT NULL,rx_total INTEGER NOT NULL,tx_total INTEGER NOT NULL,checked_at INTEGER NOT NULL,PRIMARY KEY(scope,entity_id))")
     c.execute("CREATE TABLE IF NOT EXISTS resource_report_settings(server_id TEXT PRIMARY KEY,telegram_enabled INTEGER NOT NULL DEFAULT 1,metrics TEXT NOT NULL DEFAULT '[\"cpu\",\"memory\",\"swap\",\"disk\",\"network\"]')")
     resource_columns={r[1] for r in c.execute("PRAGMA table_info(resource_report_settings)")}
     if "metrics" not in resource_columns:c.execute("ALTER TABLE resource_report_settings ADD COLUMN metrics TEXT NOT NULL DEFAULT '[\"cpu\",\"memory\",\"swap\",\"disk\",\"network\"]'")
@@ -257,6 +258,71 @@ def save_tunnel_speedtest(ident,result):
 def attach_speedtests(items):
     results=tunnel_speedtest_rows()
     return [dict(item,speedtest=results.get(item.get('id'))) for item in items]
+
+def traffic_totals(scope,ident):
+    with db() as c:
+        row=c.execute('SELECT server_id,rx_total,tx_total,checked_at FROM traffic_counters WHERE scope=? AND entity_id=?',(scope,ident)).fetchone()
+    if not row:return None
+    return {'server_id':row['server_id'],'received_bytes':row['rx_total'],'sent_bytes':row['tx_total'],'total_bytes':row['rx_total']+row['tx_total'],'checked_at':row['checked_at']}
+
+def record_traffic(scope,ident,server_id,rx_bytes,tx_bytes):
+    rx_bytes=max(0,int(rx_bytes));tx_bytes=max(0,int(tx_bytes));now=int(time.time())
+    with db() as c:
+        row=c.execute('SELECT server_id,rx_raw,tx_raw,rx_total,tx_total FROM traffic_counters WHERE scope=? AND entity_id=?',(scope,ident)).fetchone()
+        if row:
+            if row['server_id']!=server_id:owner_mismatch=True
+            else:owner_mismatch=False
+            if owner_mismatch:rx_total=tx_total=None
+            else:
+                old_rx=int(row['rx_raw']);old_tx=int(row['tx_raw'])
+                rx_total=int(row['rx_total'])+(rx_bytes-old_rx if rx_bytes>=old_rx else rx_bytes)
+                tx_total=int(row['tx_total'])+(tx_bytes-old_tx if tx_bytes>=old_tx else tx_bytes)
+        else:rx_total,tx_total=rx_bytes,tx_bytes
+        if not row or not owner_mismatch:
+            c.execute('INSERT INTO traffic_counters(scope,entity_id,server_id,rx_raw,tx_raw,rx_total,tx_total,checked_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope,entity_id) DO UPDATE SET rx_raw=excluded.rx_raw,tx_raw=excluded.tx_raw,rx_total=excluded.rx_total,tx_total=excluded.tx_total,checked_at=excluded.checked_at',(scope,ident,server_id,rx_bytes,tx_bytes,rx_total,tx_total,now))
+        else:rx_total=tx_total=None
+    if rx_total is None:return traffic_totals(scope,ident)
+    return {'server_id':server_id,'received_bytes':rx_total,'sent_bytes':tx_total,'total_bytes':rx_total+tx_total,'checked_at':now}
+
+def tunnel_counter(item):
+    meta=item.get('metadata') or {};transport=meta.get('transport')
+    if transport in ('ipsec-ikev2','ipsec-esp-udp','esp'):
+        result=privileged({'op':'ipsec-stats','id':item['id'],'local':meta.get('outer_local'),'peer':meta.get('outer_peer')})
+    else:
+        interface=meta.get('tun_name') or meta.get('interface')
+        if not isinstance(interface,str) or not interface:return None
+        result=privileged({'op':'interface-stats','id':item['id'],'interface':interface})
+    if result.get('error') or result.get('available') is False:return None
+    try:return {'rx_bytes':max(0,int(result['rx_bytes'])),'tx_bytes':max(0,int(result['tx_bytes']))}
+    except (KeyError,TypeError,ValueError):return None
+
+def update_tunnel_traffic(local_items,remote_statuses):
+    endpoints={}
+    for item in local_items:
+        raw=item.get('traffic_raw')
+        if raw:endpoints.setdefault(item['id'],{})['local']=raw
+    for status in remote_statuses:
+        if status.get('reachable') is not True:continue
+        for item in status.get('tunnels',[]):
+            raw=item.get('traffic_raw')
+            if isinstance(raw,dict) and not raw.get('error') and raw.get('available') is not False:
+                try:endpoints.setdefault(item['id'],{})[status['id']]={'rx_bytes':max(0,int(raw['rx_bytes'])),'tx_bytes':max(0,int(raw['tx_bytes']))}
+                except (KeyError,TypeError,ValueError):pass
+    for ident,sources in endpoints.items():
+        previous=traffic_totals('tunnel',ident)
+        owner=previous.get('server_id') if previous else ('local' if 'local' in sources else sorted(sources)[0])
+        raw=sources.get(owner)
+        if raw:record_traffic('tunnel',ident,owner,raw['rx_bytes'],raw['tx_bytes'])
+
+def update_forward_traffic(server_id,raw_forwards):
+    if not isinstance(raw_forwards,dict):return
+    for ident,raw in raw_forwards.items():
+        if not ID.fullmatch(str(ident)) or not isinstance(raw,dict):continue
+        try:record_traffic('forward:'+server_id,str(ident),server_id,raw['bytes_in'],raw['bytes_out'])
+        except (KeyError,TypeError,ValueError):continue
+
+def attach_forward_traffic(items):
+    return [dict(item,traffic=traffic_totals('forward:'+str(item.get('server_id') or 'local'),item['id'])) for item in items]
 
 def erspan_health(item):
     checked=int(time.time())
@@ -771,7 +837,7 @@ def resource_snapshot():
 def server_probe(server):
     try:
         result=server_remote(server,{"op":"list"})
-        return {"id":server["id"],"host":server["host"],"reachable":True,"services":result.get("services",[]),"tunnels":result.get("items",[]),"resources":result.get("resources"),"app_version":result.get("app_version","نامشخص")}
+        return {"id":server["id"],"host":server["host"],"reachable":True,"services":result.get("services",[]),"tunnels":result.get("items",[]),"resources":result.get("resources"),"forward_counters":result.get("forward_counters",{}),"app_version":result.get("app_version","نامشخص")}
     except Exception as e:return {"id":server["id"],"host":server["host"],"reachable":False,"error":str(e)[-500:],"tunnels":[]}
 
 def monitor_loop():
@@ -779,11 +845,21 @@ def monitor_loop():
     while True:
         try:
             current=rows()
+            for item in current:
+                try:item['traffic_raw']=tunnel_counter(item)
+                except Exception:item['traffic_raw']=None
             with ThreadPoolExecutor(max_workers=min(8,max(1,len(current)))) as pool:probes=list(pool.map(tunnel_health,current))
             for item,probe in zip(current,probes):item['health']=probe
             servers=server_rows()
             with ThreadPoolExecutor(max_workers=min(8,max(1,len(servers)))) as pool:remote=list(pool.map(server_probe,servers))
             probe_tunnel_links(current,remote,{server['id']:server for server in servers})
+            update_tunnel_traffic(current,remote)
+            local_forwards=privileged({'op':'haproxy','id':'forwards','action':'status'})
+            update_forward_traffic('local',local_forwards.get('forwards',{}))
+            for status in remote:update_forward_traffic(status['id'],status.get('forward_counters',{}))
+            for status in remote:
+                for item in status.get('tunnels',[]):
+                    item.pop('traffic_raw',None);item['traffic']=traffic_totals('tunnel',item['id'])
             local={item["id"]:item.get('health',{}) for item in current}
             services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')]
             local_status={'id':'local','name':'سرور مرکزی','host':'سرور پنل','reachable':True,'services':services,'tunnels':[],'app_version':APP_VERSION}
@@ -822,7 +898,10 @@ def resource_monitor_loop():
 def server_remote(server,payload):
     import inspect
     code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface'),'local':d.get('local')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='xray-config':\n out=t.privileged({'op':'xray-config','id':'xray','action':d.get('action','apply'),'config':d.get('config')})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'])\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
-    code=code.replace("out={'items':out,'services':services}","out={'items':out,'services':services,'app_version':getattr(t,'APP_VERSION','نامشخص')}",1)
+    needle="  x['server_id']="+repr(server['id'])+";out.append(x)"
+    replacement="  try:x['traffic_raw']=t.tunnel_counter(x)\n  except Exception:x['traffic_raw']=None\n  x['server_id']="+repr(server['id'])+";out.append(x)"
+    code=code.replace(needle,replacement,1)
+    code=code.replace("out={'items':out,'services':services}","out={'items':out,'services':services,'forward_counters':t.privileged({'op':'haproxy','id':'forwards','action':'status'}).get('forwards',{}),'app_version':getattr(t,'APP_VERSION','نامشخص')}",1)
     guarded_code="import json\ntry:\n exec(compile("+repr(code)+", '<tunnelmgr-remote>', 'exec'))\nexcept Exception as exc:\n print(json.dumps({'error':str(exc)},ensure_ascii=False))"
     remote="runuser -u tunnelmgr -- env TUNNELMGR_HOME=/var/lib/tunnelmgr /usr/bin/python3 -c "+shlex.quote(guarded_code)
     proc=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=180)
@@ -2348,8 +2427,8 @@ def server(host,port):
                     health=dict(MONITOR_TUNNELS)
                     statuses=[dict(item) for item in MONITOR_SERVERS]
                     resources=[dict(item) for item in MONITOR_RESOURCES]
-                local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()]
-                remote=[dict(tunnel,server_id=status["id"]) for status in statuses if status["id"]!="local" for tunnel in status.get("tunnels",[])]
+                local=[dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"}),traffic=traffic_totals('tunnel',item['id'])) for item in rows()]
+                remote=[dict(tunnel,server_id=status["id"],traffic=traffic_totals('tunnel',tunnel['id'])) for status in statuses if status["id"]!="local" for tunnel in status.get("tunnels",[])]
                 servers=[{k:v for k,v in server.items() if k!="identity"}|{"has_identity":bool(server.get("identity"))} for server in server_rows()]
                 return self.send(200,{"servers":servers,"statuses":statuses,"tunnels":[*local,*remote],"resources":resources})
             if route=="/api/v1/routing":
@@ -2360,7 +2439,7 @@ def server(host,port):
                 from urllib.parse import parse_qs
                 server_id=parse_qs(self.path.partition("?")[2]).get("server_id",["local"])[0]
                 if server_id!="local" and not ID.fullmatch(server_id):return self.send(400,{"error":"invalid server id"})
-                return self.send(200,{"items":forward_rows(),"service":forward_service_status(server_id)})
+                return self.send(200,{"items":attach_forward_traffic(forward_rows()),"service":forward_service_status(server_id)})
             if route=="/api/v1/proxy-lines":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,{'items':proxy_line_summaries(),'service':privileged({'op':'xray-config','id':'xray','action':'status'})})
@@ -2381,10 +2460,10 @@ def server(host,port):
                 with MONITOR_LOCK:
                     health=dict(MONITOR_TUNNELS)
                     statuses=list(MONITOR_SERVERS)
-                local=attach_speedtests([dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"})) for item in rows()])
-                remote=attach_speedtests([dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])])
+                local=attach_speedtests([dict(item,server_id="local",health=health.get(item["id"],{"state":"unknown"}),traffic=traffic_totals('tunnel',item['id'])) for item in rows()])
+                remote=attach_speedtests([dict(item,server_id=status["id"],traffic=traffic_totals('tunnel',item['id'])) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])])
                 return self.send(200,{"items":[*local,*remote]})
-            if route=="/api/v1/tunnels":return self.send(200,{"items":attach_speedtests(rows())})
+            if route=="/api/v1/tunnels":return self.send(200,{"items":attach_speedtests([dict(item,traffic=traffic_totals('tunnel',item['id'])) for item in rows()])})
             if route=="/api/v1/servers":
                 settings=resource_report_settings()
                 metrics=resource_report_metrics()
@@ -2436,6 +2515,7 @@ def server(host,port):
                     with MONITOR_LOCK:health=MONITOR_TUNNELS.get(ident)
                     item["health"]=health if health is not None else tunnel_health(item)
                     item["speedtest"]=tunnel_speedtest_rows().get(ident)
+                    item["traffic"]=traffic_totals('tunnel',ident)
                     return self.send(200,item)
                 except Exception as e:return self.send(502,{"error":str(e),"item":item})
             if len(bits)==5 and bits[:3]==["api","v1","tunnels"] and bits[4]=="logs":
