@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.2"
+APP_VERSION="1.0.0.3"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2215,12 +2215,14 @@ def server(host,port):
                 self.send_response(308,'Permanent Redirect');self.send_header('Location',f'https://{domain}:{port}{target}');self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0');self.end_headers();self.close_connection=True
                 return False
             except Exception:pass
-            try:
-                if not ipaddress.ip_address(self.client_address[0]).is_loopback:
-                    body=json.dumps({'error':'HTTPS is required. Configure the panel certificate or connect through SSH port forwarding.'}).encode()
-                    self.send_response(426,'HTTPS Required');self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);self.close_connection=True
+            try:remote=not ipaddress.ip_address(self.client_address[0]).is_loopback
+            except ValueError:remote=True
+            if remote:
+                host=self.headers.get('Host','').strip()
+                if host and re.fullmatch(r'(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::\d{1,5})?',host):
+                    target=self.path if self.path.startswith('/') and not self.path.startswith('//') and not any(ord(c)<32 for c in self.path) else '/'
+                    self.send_response(308,'Permanent Redirect');self.send_header('Location',f'https://{host}{target}');self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0');self.end_headers();self.close_connection=True
                     return False
-            except ValueError:pass
             return True
         def body(self):
             n=int(self.headers.get("Content-Length","0"))
@@ -2867,7 +2869,7 @@ def server(host,port):
             message=fmt%args
             message=re.sub(r"(?i)(password|token|secret)=([^&\s]+)",r"\1=[redacted]",message)
             print("api:",message,file=sys.stderr)
-    print(f"API on http://{host}:{port} (HTTPS on same port when configured); password authentication enabled",flush=True)
+    print(f"API on http://{host}:{port} and https://{host}:{port}; password authentication enabled",flush=True)
     db().close()
     threading.Thread(target=geoip_monitor_loop,name="geoip-monitor",daemon=True).start()
     threading.Thread(target=monitor_loop,name="tunnel-health-monitor",daemon=True).start()
