@@ -1348,6 +1348,30 @@ def allocation_snapshot(server_id,servers,include_l2tp=False,include_network_pro
             snapshot['l2tp_profiles'].append(result['config'])
     return snapshot
 
+def available_udp_ports(server_id,ports,servers):
+    """Ask the endpoint itself which candidate UDP ports can be bound now."""
+    ports=sorted({int(port) for port in ports})
+    if any(not 1024<=port<=65535 for port in ports):return set()
+    if server_id!='local':
+        code='import json,socket,sys; d=json.load(sys.stdin); ports=d["ports"]; available=[]\nfor p in ports:\n s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)\n try:\n  s.bind(("0.0.0.0",int(p))); available.append(int(p))\n except OSError:\n  pass\n finally:\n  s.close()\nprint(json.dumps({"available":available}))'
+        command='runuser -u tunnelmgr -- /usr/bin/python3 -c '+shlex.quote(code)
+        result=subprocess.run(ssh_argv(servers[server_id])+[command],input=json.dumps({'ports':ports}),capture_output=True,text=True,timeout=30)
+        if result.returncode:
+            raise RuntimeError('The central server could not verify UDP port availability on '+server_id+'. '+(result.stderr or result.stdout).strip()[-400:])
+        try:available=json.loads(result.stdout).get('available')
+        except (ValueError,AttributeError):available=None
+        if not isinstance(available,list) or any(not isinstance(port,int) for port in available) or not set(available)<=set(ports):
+            raise RuntimeError('The central server received an invalid UDP port check from '+server_id+'.')
+        return set(available)
+    available=set()
+    for port in ports:
+        probe=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        try:
+            probe.bind(('0.0.0.0',port));available.add(port)
+        except OSError:pass
+        finally:probe.close()
+    return available
+
 def native_profile_config(server_id,ident,servers):
     if server_id=='local':
         item=find(ident)
@@ -1466,7 +1490,7 @@ def allocate_vxlan_values(snapshots):
     else:raise RuntimeError('No UDP destination port is free on both selected servers.')
     return vni,port
 
-def allocate_l2tp_values(snapshots,encap='udp'):
+def allocate_l2tp_values(snapshots,encap='udp',port_check=None):
     used_tunnel_ids=set();used_session_ids=set();used_ports=[]
     for snapshot in snapshots:
         network=snapshot.get('network') or {}
@@ -1496,14 +1520,21 @@ def allocate_l2tp_values(snapshots,encap='udp'):
         return pair
     tunnel_a,tunnel_b=unique_pair(used_tunnel_ids);session_a,session_b=unique_pair(used_session_ids)
     if encap!='udp':return tunnel_a,tunnel_b,session_a,session_b,None,None
-    def free_port(used,network):
+    def free_port(used,network,endpoint):
         low,high=network.get('udp_ephemeral_range',[32768,60999])
-        available=[port for port in range(1024,65536) if port not in used]
-        candidates=[port for port in available if not int(low)<=port<=int(high)] or available
-        if not candidates:raise RuntimeError('No free UDP ports are available for L2TPv3 on both servers.')
-        value=secrets.choice(candidates);used.add(value);return value
-    port_a=free_port(used_ports[0],snapshots[0].get('network') or {})
-    port_b=free_port(used_ports[1],snapshots[1].get('network') or {})
+        preferred=[port for port in range(1024,65536) if port not in used and not int(low)<=port<=int(high)]
+        fallback=[port for port in range(1024,65536) if port not in used]
+        candidates=preferred or fallback
+        # Randomly sample batches and ask the central allocator to bind-probe
+        # them on the target endpoint, avoiding a new SSH connection per port.
+        while candidates:
+            batch=[candidates.pop(secrets.randbelow(len(candidates))) for _ in range(min(64,len(candidates)))]
+            available=set(batch) if port_check is None else port_check(endpoint,batch)
+            if available:
+                value=secrets.choice(tuple(available));used.add(value);return value
+        raise RuntimeError('The central server could not find and verify a free L2TPv3 UDP port on '+endpoint+'.')
+    port_a=free_port(used_ports[0],snapshots[0].get('network') or {},0)
+    port_b=free_port(used_ports[1],snapshots[1].get('network') or {},1)
     return tunnel_a,tunnel_b,session_a,session_b,port_a,port_b
 
 def create_backhaul_pair(data):
@@ -1626,7 +1657,9 @@ def create_native_pair(data):
             if config_b.get('encap') and config_b['encap']!=encap:raise ValueError('Both L2TPv3 peers must use the same encapsulation.')
             config_a['encap']=config_b['encap']=encap
             if action=='create':
-                tunnel_a,tunnel_b,session_a,session_b,port_a,port_b=allocate_l2tp_values([snapshots[a_id],snapshots[b_id]],encap)
+                tunnel_a,tunnel_b,session_a,session_b,port_a,port_b=allocate_l2tp_values(
+                    [snapshots[a_id],snapshots[b_id]],encap,
+                    lambda endpoint,ports:available_udp_ports((a_id,b_id)[endpoint],ports,servers))
                 config_a.update({'tunnel_id':tunnel_a,'peer_tunnel_id':tunnel_b,'session_id':session_a,'peer_session_id':session_b})
                 config_b.update({'tunnel_id':tunnel_b,'peer_tunnel_id':tunnel_a,'session_id':session_b,'peer_session_id':session_a})
                 if encap=='udp':
