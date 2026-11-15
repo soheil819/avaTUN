@@ -1,3 +1,8 @@
+## avaTUN 0.2.35 · حفظ listener مشترک GRE-FoU
+
+- Keep a FoU UDP listener registered while another active tunnel profile on the same server still uses the same protocol and port.
+- Pass the profile identity through rollback cleanup so a failed start cannot remove another tunnel's shared listener.
+
 ## avaTUN 0.2.34 · انتظار آماده‌شدن تونل پیش از تست سرعت
 
 - Wait for both tunnel peers to answer over their inner path before starting iperf3.

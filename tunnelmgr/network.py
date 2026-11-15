@@ -47,7 +47,25 @@ def run_swanctl(*args,timeout=20):
         raise RuntimeError('swanctl '+ ' '.join(args)+' failed: '+('; '.join(useful[-4:]) or '; '.join(lines[-4:]) or 'unknown error'))
     return result
 
-def remove_fou(kind, port):
+def other_fou_profile_active(kind, port, current=None):
+    """Keep a FoU listener while another active profile still uses it."""
+    directory=pathlib.Path('/etc/tunnelmgr/network')
+    for path in directory.glob('*.json'):
+        if path.stem==current:continue
+        try:profile=json.loads(path.read_text())
+        except Exception:continue
+        try:other_port=int(profile.get('fou_port',0))
+        except (TypeError,ValueError):continue
+        if profile.get('kind')!=kind or other_port!=int(port):continue
+        interface=profile.get('interface')
+        if interface and pathlib.Path('/sys/class/net',interface).exists():return True
+        unit='tunnelmgr-network@'+path.stem+'.service'
+        state=subprocess.run(['/usr/bin/systemctl','show','-p','ActiveState','--value',unit],capture_output=True,text=True,timeout=8).stdout.strip()
+        if state in ('active','activating','deactivating'):return True
+    return False
+
+def remove_fou(kind, port, profile_name=None):
+    if other_fou_profile_active(kind,port,profile_name):return
     proto={'gre-fou':47,'ipip-fou':4,'sit-fou':41}[kind]
     subprocess.run(['/usr/sbin/ip','fou','del','port',str(int(port)),'ipproto',str(proto)],capture_output=True)
 
@@ -158,7 +176,7 @@ def apply(profile, up, profile_name=None):
                 result=subprocess.run(['/usr/sbin/ip','tunnel' if kind.startswith('sit-6to4') or kind=='sit-isatap' else 'link','del',name],capture_output=True,text=True)
                 if result.returncode and link.exists():raise RuntimeError(result.stderr.strip() or f'could not remove managed tunnel interface {name}')
                 if link.exists():raise RuntimeError(f'managed tunnel interface {name} still exists after stop; profile was not replaced')
-            if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'])
+            if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'],profile_name)
             return
         if kind=='sit-6to4':
             # 6to4 and ISATAP share the same point-to-point SIT interface;
@@ -190,7 +208,7 @@ def apply(profile, up, profile_name=None):
                 if kind.endswith('-fou'):cmd+=['encap','fou','encap-sport','auto','encap-dport',str(int(profile['fou_port']))]
                 try:run(*cmd)
                 except Exception:
-                    if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'])
+                    if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'],profile_name)
                     raise
             else:
                 typ={'gre':'gre','gretap':'gretap','gre-fou':'gre','geneve':'geneve','vxlan':'vxlan','erspan':'erspan'}[kind]
@@ -203,7 +221,7 @@ def apply(profile, up, profile_name=None):
                 if kind=='erspan':cmd+=['seq','key',str(int(profile['erspan_key'])),'local',str(src),'remote',str(dst),'erspan_ver','1','erspan',str(int(profile['erspan_index']))]
                 try:run(*cmd)
                 except Exception:
-                    if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'])
+                    if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'],profile_name)
                     raise
             address=profile.get('inner_local')
         if not address:
@@ -227,7 +245,7 @@ def apply(profile, up, profile_name=None):
             if sit_shared:
                 if created_sit and not other_sit_profile_active(sit_local,sit_peer,profile_name):subprocess.run(['/usr/sbin/ip','tunnel','del',name],capture_output=True)
             else:subprocess.run(['/usr/sbin/ip','link','del',name],capture_output=True)
-            if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'])
+            if kind.endswith('-fou'):remove_fou(kind,profile['fou_port'],profile_name)
             raise
     elif kind=='wireguard':
         name=iface(profile['interface'])

@@ -195,7 +195,7 @@ def manage(req, ident):
             result=subprocess.run(['systemctl',*cmd,unit],capture_output=True,text=True,timeout=30)
         if result.returncode:
             if action=='start':
-                try:apply(old,False)
+                try:apply(old,False,ident)
                 except Exception:pass
                 status=subprocess.run(['systemctl','show',unit,'-p','Result','-p','ExecMainCode','-p','ExecMainStatus','-p','ActiveState'],capture_output=True,text=True,timeout=8)
                 journal=subprocess.run(['journalctl','-u',unit,'-n','18','-o','cat','--no-pager'],capture_output=True,text=True,timeout=8)
@@ -212,7 +212,7 @@ def manage(req, ident):
                 if values.get('ActiveState')=='active':
                     return {'ok':True,'output':'Tunnel service is active.'}
                 if values.get('ActiveState')=='failed':
-                    try:apply(old,False)
+                    try:apply(old,False,ident)
                     except Exception:pass
                     journal=subprocess.run(['journalctl','-u',unit,'-n','18','-o','cat','--no-pager'],capture_output=True,text=True,timeout=8)
                     message=journal.stdout.strip() or values.get('Result','systemd could not start the tunnel service')
