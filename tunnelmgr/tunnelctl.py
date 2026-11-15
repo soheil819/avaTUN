@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.49"
+APP_VERSION="0.2.50"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2127,7 +2127,34 @@ def server(host,port):
                 conn.close();raise
             super().setup()
         def send(self,status,obj,ctype="application/json; charset=utf-8"):
-            b=obj if isinstance(obj,bytes) else json.dumps(obj,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type",ctype);self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(b)));self.send_header("X-Content-Type-Options","nosniff");self.end_headers();self.wfile.write(b)
+            b=obj if isinstance(obj,bytes) else json.dumps(obj,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type",ctype);self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(b)));self.send_header("X-Content-Type-Options","nosniff")
+            if self.is_secure():self.send_header("Strict-Transport-Security","max-age=15552000")
+            self.end_headers();self.wfile.write(b)
+        def is_secure(self):
+            if isinstance(self.connection,ssl.SSLSocket):return True
+            try:return ipaddress.ip_address(self.client_address[0]).is_loopback and self.headers.get('X-Forwarded-Proto','').lower()=='https'
+            except ValueError:return False
+        def parse_request(self):
+            if not super().parse_request():return False
+            if self.is_secure():return True
+            try:
+                peer=ipaddress.ip_address(self.client_address[0])
+                if peer.is_loopback and self.path.split('?',1)[0]=='/health':return True
+                tls=json.loads(pathlib.Path('/var/lib/tunnelmgr/panel-tls-status.json').read_text())
+                domain=tls.get('domain','');port=int(tls.get('port',0))
+                cert=pathlib.Path('/etc/tunnelmgr/panel-tls/fullchain.pem');key=pathlib.Path('/etc/tunnelmgr/panel-tls/privkey.pem')
+                if tls.get('state')!='ready' or not cert.is_file() or not key.is_file() or not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',domain) or not 1024<=port<=65535:return True
+                target=self.path if self.path.startswith('/') and not self.path.startswith('//') and not any(ord(c)<32 for c in self.path) else '/'
+                self.send_response(308,'Permanent Redirect');self.send_header('Location',f'https://{domain}:{port}{target}');self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0');self.end_headers();self.close_connection=True
+                return False
+            except Exception:pass
+            try:
+                if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                    body=json.dumps({'error':'HTTPS is required. Configure the panel certificate or connect through SSH port forwarding.'}).encode()
+                    self.send_response(426,'HTTPS Required');self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);self.close_connection=True
+                    return False
+            except ValueError:pass
+            return True
         def body(self):
             n=int(self.headers.get("Content-Length","0"))
             if n<1 or n>65536:raise ValueError("body must be 1..65536 bytes")
@@ -2151,7 +2178,7 @@ def server(host,port):
             entry=SESSIONS.get(m.value) if m else None
             return entry if entry and entry['expires']>=time.time() else None
         def session_cookie(self,token):
-            secure='; Secure' if isinstance(self.connection,ssl.SSLSocket) else '';entry=SESSIONS.get(token,{})
+            secure='; Secure' if self.is_secure() else '';entry=SESSIONS.get(token,{})
             max_age=max(0,int(entry.get('expires',time.time()+43200)-time.time()))
             self.send_header('Set-Cookie',f'tunnelmgr_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}')
         def do_GET(self):
@@ -2167,8 +2194,10 @@ def server(host,port):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/index.html";return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
             if route=="/assets/Yekan.woff2":
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/Yekan.woff2";return self.send(200,f.read_bytes(),"font/woff2")
-            if route=="/assets/world_equirectangular_4096x2048.png":
-                f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/world_equirectangular_4096x2048.png";return self.send(200,f.read_bytes(),"image/png")
+            if route in ("/assets/avatun-logo.png",):
+                f=pathlib.Path(__file__).resolve().parents[1]/"web"/route.lstrip("/");return self.send(200,f.read_bytes(),"image/png")
+            if route=="/assets/world_neon_4096x2048.svg":
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/world_neon_4096x2048.svg";return self.send(200,f.read_bytes(),"image/svg+xml")
             if route in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg", "/assets/mesh-proxy.svg"):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web"/route.lstrip("/");return self.send(200,f.read_bytes(),"image/svg+xml")
             if route=="/admin":

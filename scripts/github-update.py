@@ -6,6 +6,7 @@ import os
 import pathlib
 import pwd
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -23,6 +24,8 @@ STATUS = pathlib.Path('/var/lib/tunnelmgr/github-update.json')
 INSTALLED_APP = pathlib.Path('/opt/tunnelmgr/tunnelmgr/tunnelctl.py')
 USER_AGENT = 'avaTUN-update-checker'
 VERSION_RE = re.compile(r'^APP_VERSION\s*=\s*[\'\"](\d+\.\d+\.\d+)[\'\"]', re.M)
+SIGNER_WORKFLOW = f'{OWNER}/{REPOSITORY}/.github/workflows/release-assets.yml'
+MIN_GH_VERSION = (2, 102, 0)
 
 
 def version_tuple(value):
@@ -59,6 +62,44 @@ def remote_release():
     return commit, match.group(1)
 
 
+def release_archive(version, expected_commit):
+    tag_url = f'{API}/git/ref/tags/{urllib.parse.quote(version, safe="")}'
+    target = json.loads(request(tag_url)).get('object', {})
+    for _ in range(4):
+        if target.get('type') == 'commit':
+            break
+        if target.get('type') != 'tag' or not re.fullmatch(r'[0-9a-f]{40}', target.get('sha', '')):
+            raise ValueError('GitHub release tag does not point to a commit.')
+        target = json.loads(request(f'{API}/git/tags/{target["sha"]}')).get('object', {})
+    if target.get('type') != 'commit' or target.get('sha') != expected_commit:
+        raise ValueError('GitHub release tag does not match the checked main commit.')
+    release = json.loads(request(f'{API}/releases/tags/{urllib.parse.quote(version, safe="")}'))
+    if release.get('draft') or release.get('tag_name') != version:
+        raise ValueError('A published GitHub release is not available for this version.')
+    assets = {asset.get('name'): asset.get('browser_download_url') for asset in release.get('assets', [])}
+    archive_url = assets.get(f'avaTUN-{version}.tar.gz')
+    if not archive_url or not archive_url.startswith('https://github.com/'):
+        raise ValueError('The signed GitHub release archive is not available yet.')
+    return archive_url
+
+
+def verify_release_archive(archive, version):
+    gh = shutil.which('gh')
+    if not gh:
+        raise RuntimeError('GitHub CLI is required to verify the release attestation.')
+    version_text = subprocess.run([gh, '--version'], capture_output=True, text=True, timeout=15)
+    match = re.search(r'gh version (\d+)\.(\d+)\.(\d+)', version_text.stdout)
+    if not match or tuple(map(int, match.groups())) < MIN_GH_VERSION:
+        raise RuntimeError('GitHub CLI 2.102.0 or newer is required to verify release attestations.')
+    result = subprocess.run([gh, 'attestation', 'verify', str(archive), '--repo',
+                             f'{OWNER}/{REPOSITORY}', '--signer-workflow', SIGNER_WORKFLOW,
+                             '--source-ref', f'refs/tags/{version}'],
+                            capture_output=True, text=True, timeout=180)
+    if result.returncode:
+        detail=(result.stderr or result.stdout or 'GitHub artifact attestation verification failed.')[-900:]
+        raise RuntimeError('Release attestation verification failed: '+detail)
+
+
 def read_status():
     try:
         return json.loads(STATUS.read_text())
@@ -88,13 +129,16 @@ def check(save=True):
     current = installed_version()
     try:
         commit, latest = remote_release()
+        newer = version_tuple(latest) > version_tuple(current)
+        archive_url = release_archive(latest, commit) if newer else None
         status = {
             'repository': f'{OWNER}/{REPOSITORY}', 'ref': REF,
             'current_version': current, 'latest_version': latest,
             'latest_commit': commit,
+            'archive_url': archive_url,
             'commit_url': f'https://github.com/{OWNER}/{REPOSITORY}/commit/{commit}',
-            'update_available': version_tuple(latest) > version_tuple(current),
-            'state': 'available' if version_tuple(latest) > version_tuple(current) else 'current',
+            'update_available': newer,
+            'state': 'available' if newer else 'current',
             'checked_at': time.time(), 'error': None,
         }
     except Exception as error:
@@ -136,12 +180,12 @@ def install():
     status['state'] = 'installing'
     status['started_at'] = int(time.time())
     write_status(status)
-    archive_url = f'https://codeload.github.com/{OWNER}/{REPOSITORY}/tar.gz/{status["latest_commit"]}'
     try:
         with tempfile.TemporaryDirectory(prefix='avatun-github-update-', dir=STATUS.parent) as tmp:
             work = pathlib.Path(tmp)
             archive = work / 'source.tar.gz'
-            archive.write_bytes(request(archive_url, 'application/vnd.github+json', timeout=90))
+            archive.write_bytes(request(status['archive_url'], 'application/octet-stream', timeout=180))
+            verify_release_archive(archive, status['latest_version'])
             extract = work / 'source'
             extract.mkdir(mode=0o700)
             safe_extract(archive, extract)

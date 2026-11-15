@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision Let's Encrypt for the panel while retaining clear HTTP."""
+"""Provision Let's Encrypt for the panel and redirect browser traffic to HTTPS."""
 import grp, hashlib, ipaddress, json, os, re, shutil, socket, subprocess, sys, tempfile, time
 from pathlib import Path
 
@@ -75,7 +75,7 @@ def apply():
         drop.write_text('[Service]\nExecStart=\nExecStart=/usr/bin/python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py api --host 0.0.0.0 --port '+str(port)+'\n');drop.chmod(0o644)
         run(['/usr/bin/systemctl','daemon-reload'],20)
     expiry=run(['/usr/bin/openssl','x509','-enddate','-noout','-in',str(CERT_DIR/'fullchain.pem')]).partition('=')[2]
-    result={'state':'ready','step':'complete','message':'گواهی نصب شد؛ HTTP و HTTPS روی یک پورت فعال هستند.','domain':domain,'email':email,'port':port,'certificate_name':cert_name,'certificate_expires':expiry,'updated_at':int(time.time())}
+    result={'state':'ready','step':'complete','message':'گواهی نصب شد؛ ورود و درخواست‌های پنل با HTTPS انجام می‌شوند و HTTP به HTTPS هدایت می‌شود.','domain':domain,'email':email,'port':port,'certificate_name':cert_name,'certificate_expires':expiry,'updated_at':int(time.time())}
     write_json(STATUS,result)
     write_json(WEBHOOK_CONFIG,{'state':'ready','domain':domain,'cert':str(CERT_DIR/'fullchain.pem'),'key':str(CERT_DIR/'privkey.pem'),'updated_at':int(time.time())},0o640)
     os.chown(WEBHOOK_CONFIG,0,group)

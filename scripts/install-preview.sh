@@ -5,6 +5,17 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 command -v python3 >/dev/null
 python3 -c 'import sys; assert sys.version_info >= (3,11)'
 
+# The updater verifies release provenance with GitHub CLI. Install it from
+# GitHub's signed apt repository so old system packages cannot skip new checks.
+if ! command -v curl >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl
+fi
+install -d -m 0755 /etc/apt/keyrings
+curl --fail --location --silent --show-error https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+chmod 0644 /etc/apt/keyrings/githubcli-archive-keyring.gpg
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n' "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/github-cli.list
+
 install -d -o root -g root -m 0755 /usr/local/bin /etc/backhaul /var/lib/backhaul-manager
 # Backhaul TUN is shipped as a manifest-verified amd64 core. The manager owns
 # the transactional upgrade: it backs up and detaches managed tunnel files,
@@ -106,6 +117,8 @@ command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
 command -v modprobe >/dev/null 2>&1 || PACKAGES="$PACKAGES kmod"
 command -v qrencode >/dev/null 2>&1 || PACKAGES="$PACKAGES qrencode"
+GH_VERSION=$(gh --version 2>/dev/null | sed -n '1s/^gh version \([0-9.]*\).*/\1/p' || true)
+if ! python3 -c 'import sys; p=tuple(map(int,sys.argv[1].split("."))); sys.exit(p < (2,102,0))' "$GH_VERSION" 2>/dev/null; then PACKAGES="$PACKAGES gh"; fi
 PYTHON_CRYPTO_STATUS=$(dpkg-query -W -f='${Status}' python3-cryptography 2>/dev/null || true)
 case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-cryptography" ;; esac
 if [ -n "$PACKAGES" ]; then

@@ -6,22 +6,36 @@ avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس �
 
 ## نصب سریع
 
-روی Debian یا Ubuntu با دسترسی sudo اجرا کنید:
+روی Debian یا Ubuntu، ابتدا [GitHub CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) را نصب کنید. سپس آخرین ریلیز پایدار را دریافت و attestation آن را پیش از اجرای نصب‌کننده با نام مخزن و workflow بررسی کنید:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/scripts/install-from-github.sh | bash
+TAG="$(gh release list --repo soheil819/avaTUN --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName')"
+WORK="$(mktemp -d)"
+gh release download "$TAG" --repo soheil819/avaTUN --pattern "avaTUN-${TAG}.tar.gz" --dir "$WORK"
+gh attestation verify "$WORK/avaTUN-${TAG}.tar.gz" --repo soheil819/avaTUN \
+  --signer-workflow soheil819/avaTUN/.github/workflows/release-assets.yml \
+  --source-ref "refs/tags/$TAG"
+tar -xzf "$WORK/avaTUN-${TAG}.tar.gz" --strip-components=1 -C "$WORK"
+sudo bash "$WORK/install.sh"
 ```
 
-این دستور مخزن عمومی را بدون نیاز به GitHub CLI یا ورود به حساب دریافت می‌کند، پیش‌نیازها را نصب می‌کند و در پایان نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. نصب‌کننده در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی می‌سازد. پورت پیش‌فرض پنل ۸۷۶۵ است.
+نصب‌کنندهٔ امضانشده از شاخهٔ متغیر `main` اجرا نمی‌شود. پس از تأیید امضای GitHub Actions، نصب‌کننده پیش‌نیازها را نصب می‌کند و در پایان نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
 **بتا:** avaTUN هنوز در حال توسعه است. ابتدا روی سرور آزمایشی نصب کنید و برای دسترسی امن از HTTPS استفاده کنید.
 
 ### English
 
-avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install on Debian or Ubuntu without GitHub authentication:
+avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI, then download the latest stable release and verify its GitHub Actions attestation before running the installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/scripts/install-from-github.sh | bash
+TAG="$(gh release list --repo soheil819/avaTUN --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName')"
+WORK="$(mktemp -d)"
+gh release download "$TAG" --repo soheil819/avaTUN --pattern "avaTUN-${TAG}.tar.gz" --dir "$WORK"
+gh attestation verify "$WORK/avaTUN-${TAG}.tar.gz" --repo soheil819/avaTUN \
+  --signer-workflow soheil819/avaTUN/.github/workflows/release-assets.yml \
+  --source-ref "refs/tags/$TAG"
+tar -xzf "$WORK/avaTUN-${TAG}.tar.gz" --strip-components=1 -C "$WORK"
+sudo bash "$WORK/install.sh"
 ```
 
 The installer prints the panel URL and initial login credentials in the terminal. Test on non-production servers before operational use.
@@ -38,7 +52,7 @@ python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
 ```
 
-Passwords are stored with salted scrypt hashes. The browser uses an HttpOnly session cookie. The packaged systemd service listens on all interfaces at port 8765 so the panel can be reached at the server's public IP. The panel currently serves plain HTTP; put it behind TLS before using it over an untrusted network. To keep it loopback-only, set `--host 127.0.0.1` in the service unit and use SSH port forwarding.
+Passwords are stored with salted scrypt hashes. The browser uses an HttpOnly session cookie. The packaged systemd service listens on all interfaces at port 8765, but remote cleartext requests are refused until HTTPS is configured. For first setup, open an SSH tunnel with `ssh -L 8765:127.0.0.1:8765 user@SERVER` and visit `http://127.0.0.1:8765`; then configure a domain and issue a Let's Encrypt certificate under **Settings → TLS certificate**. After the certificate is ready, browser and API requests over HTTP are redirected to HTTPS, HSTS is enabled, and the session cookie is marked Secure. The local health endpoint remains available to the updater. Keep TCP/80 reachable for certificate issuance and renewal.
 
 The unified tunnel form lists Backhaul TUN, GRE, IPIP, GRETAP, Geneve, VXLAN, ERSPAN, 6to4, ISATAP, GRE/IPIP/SIT FoU, L2TPv3, IPsec/ESP modes, WireGuard, OpenVPN, and OpenConnect. Select direct or reverse for the endpoint role. The WireGuard, OpenVPN, and OpenConnect pair actions create coordinated endpoint configurations with per-side keys/certificates and peer addresses. OpenConnect uses ocserv and a fixed point-to-point `/31` address pair. Add Linux servers with SSH access to install or update the manager and control tunnel endpoints. During enrollment, the SSH password can bootstrap a per-server key and is then discarded; it is never stored. Uploaded or generated SSH keys are stored with mode `0600` under the controller data directory (for the installed service, `/var/lib/tunnelmgr/ssh-keys`). The health worker pings the configured peer through its tunnel interface every ten seconds. ERSPAN is reported as monitor-only because it mirrors traffic instead of carrying a bidirectional IP link.
 
