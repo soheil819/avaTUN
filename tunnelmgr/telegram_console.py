@@ -114,6 +114,16 @@ class ConsoleMixin:
             return self.show_resource_screen(user_id,active.get('p',current.get('page_index',0)),
                 active.get('scope',server_id),active.get('selected',current.get('selected','')),
                 paused=query=='resource-pause')
+        if page=='resources' and query=='resource-toggle':
+            active=self.state.get('resource-active:'+str(user_id)) or {}
+            selected=active.get('selected',current.get('selected',''))
+            if not selected:raise RuntimeError('سرور انتخاب‌شده برای تغییر گزارش پیدا نشد.')
+            items=self.panel.request('/api/v1/servers/resources',timeout=8).get('items',[])
+            item=next((x for x in items if str(x.get('id'))==str(selected)),None)
+            if not item:raise RuntimeError('سرور انتخاب‌شده پیدا نشد.')
+            self.panel.request('/api/v1/servers/resources',{'server_id':selected,'telegram_resources_enabled':not bool(item.get('telegram_resources_enabled',True))},timeout=8)
+            return self.show_resource_screen(user_id,active.get('p',current.get('page_index',0)),
+                active.get('scope',server_id),selected,paused=active.get('paused',False))
         if query=='refresh' or query.startswith('refresh:'):
             return self.show_screen(user_id,page,current.get('page_index',0),server_id,current.get('selected',''))
         if query.startswith('nav:'):

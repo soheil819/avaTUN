@@ -12,9 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
+from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="0.2.50"
+APP_VERSION="1.0.0"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -44,7 +45,7 @@ def db():
         c.execute("UPDATE tunnels SET kind='backhaul',metadata=? WHERE id=?",(json.dumps(metadata),row["id"]))
     c.execute("CREATE TABLE IF NOT EXISTS accounts(name TEXT PRIMARY KEY,role TEXT NOT NULL,digest TEXT UNIQUE NOT NULL)")
     account_columns={r[1] for r in c.execute("PRAGMA table_info(accounts)")}
-    for column,definition in (("totp_secret","TEXT NOT NULL DEFAULT ''"),("totp_pending","TEXT NOT NULL DEFAULT ''"),("totp_pending_at","INTEGER NOT NULL DEFAULT 0"),("totp_enabled","INTEGER NOT NULL DEFAULT 0"),("totp_last_step","INTEGER NOT NULL DEFAULT -1"),("recovery_codes","TEXT NOT NULL DEFAULT '[]'")):
+    for column,definition in (("totp_secret","TEXT NOT NULL DEFAULT ''"),("totp_pending","TEXT NOT NULL DEFAULT ''"),("totp_pending_at","INTEGER NOT NULL DEFAULT 0"),("totp_enabled","INTEGER NOT NULL DEFAULT 0"),("totp_last_step","INTEGER NOT NULL DEFAULT -1"),("recovery_codes","TEXT NOT NULL DEFAULT '[]'"),("theme_palette","TEXT NOT NULL DEFAULT 'teal'")):
         if column not in account_columns:c.execute(f"ALTER TABLE accounts ADD COLUMN {column} {definition}")
     c.execute("CREATE TABLE IF NOT EXISTS servers(id TEXT PRIMARY KEY,host TEXT NOT NULL,user TEXT NOT NULL,identity TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     server_columns={r[1] for r in c.execute("PRAGMA table_info(servers)")}
@@ -60,7 +61,68 @@ def db():
     c.execute("CREATE TABLE IF NOT EXISTS proxy_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS resource_report_settings(server_id TEXT PRIMARY KEY,telegram_enabled INTEGER NOT NULL DEFAULT 1,metrics TEXT NOT NULL DEFAULT '[\"cpu\",\"memory\",\"swap\",\"disk\",\"network\"]')")
+    resource_columns={r[1] for r in c.execute("PRAGMA table_info(resource_report_settings)")}
+    if "metrics" not in resource_columns:c.execute("ALTER TABLE resource_report_settings ADD COLUMN metrics TEXT NOT NULL DEFAULT '[\"cpu\",\"memory\",\"swap\",\"disk\",\"network\"]'")
+    c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES('local',1)")
+    for row in c.execute("SELECT id FROM servers"):
+        c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES(?,1)",(row[0],))
     c.commit(); return c
+
+def resource_report_settings():
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES('local',1)")
+        for row in c.execute("SELECT id FROM servers"):
+            c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES(?,1)",(row[0],))
+        c.commit()
+        return {row['server_id']:bool(row['telegram_enabled']) for row in c.execute("SELECT server_id,telegram_enabled FROM resource_report_settings")}
+
+RESOURCE_REPORT_METRICS=('cpu','memory','swap','disk','network')
+
+def normalize_resource_metrics(value):
+    if isinstance(value,str):
+        try:value=json.loads(value)
+        except (TypeError,ValueError):value=[]
+    if not isinstance(value,(list,tuple,set)):value=[]
+    return [name for name in RESOURCE_REPORT_METRICS if name in {str(item) for item in value}]
+
+def resource_report_metrics():
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES('local',1)")
+        for row in c.execute("SELECT id FROM servers"):
+            c.execute("INSERT OR IGNORE INTO resource_report_settings(server_id,telegram_enabled) VALUES(?,1)",(row[0],))
+        c.commit()
+        return {row['server_id']:normalize_resource_metrics(row['metrics']) for row in c.execute("SELECT server_id,metrics FROM resource_report_settings")}
+
+def set_resource_report_enabled(server_id,enabled):
+    if server_id!='local' and not any(row['id']==server_id for row in server_rows()):
+        raise ValueError('سرور پیدا نشد')
+    with db() as c:
+        c.execute("INSERT INTO resource_report_settings(server_id,telegram_enabled) VALUES(?,?) ON CONFLICT(server_id) DO UPDATE SET telegram_enabled=excluded.telegram_enabled",(server_id,int(bool(enabled))))
+        c.commit()
+    return bool(enabled)
+
+def set_resource_report_metrics(server_id,metrics):
+    if server_id!='local' and not any(row['id']==server_id for row in server_rows()):
+        raise ValueError('سرور پیدا نشد')
+    selected=normalize_resource_metrics(metrics)
+    with db() as c:
+        c.execute("INSERT INTO resource_report_settings(server_id,telegram_enabled,metrics) VALUES(?,?,?) ON CONFLICT(server_id) DO UPDATE SET metrics=excluded.metrics",(server_id,1,json.dumps(selected,ensure_ascii=False)))
+        c.commit()
+    return selected
+
+def account_theme(name):
+    with db() as c:
+        row=c.execute("SELECT theme_palette FROM accounts WHERE name=?",(name,)).fetchone()
+    return (row['theme_palette'] if row and row['theme_palette'] else 'teal')
+
+def set_account_theme(name,palette):
+    allowed={'teal','blue','mint','amber','coral','rose','violet','ice'}
+    if palette not in allowed:raise ValueError('تم رنگی نامعتبر است')
+    with db() as c:
+        if not c.execute("UPDATE accounts SET theme_palette=? WHERE name=?",(palette,name)).rowcount:raise ValueError('حساب کاربری پیدا نشد')
+        c.commit()
+    return palette
 
 def github_update_status():
     path=pathlib.Path('/var/lib/tunnelmgr/github-update.json')
@@ -735,11 +797,13 @@ def resource_monitor_loop():
     while True:
         started=time.monotonic()
         try:
+            report_settings=resource_report_settings()
+            report_metrics=resource_report_metrics()
             servers=server_rows()
             with ThreadPoolExecutor(max_workers=min(8,max(1,len(servers)))) as pool:
                 probes=list(pool.map(lambda server:(server,server_remote(server,{'op':'resources'})),servers))
-            current=[{'id':'local','name':'سرور مرکزی','host':'سرور پنل','reachable':True,'resources':resource_snapshot()}]
-            current.extend({'id':server['id'],'name':server['id'],'host':server['host'],'reachable':True,'resources':result} for server,result in probes)
+            current=[{'id':'local','name':'سرور مرکزی','host':'سرور پنل','reachable':True,'telegram_resources_enabled':report_settings.get('local',True),'telegram_resource_metrics':report_metrics.get('local',list(RESOURCE_REPORT_METRICS)),'resources':resource_snapshot()}]
+            current.extend({'id':server['id'],'name':server['id'],'host':server['host'],'reachable':True,'telegram_resources_enabled':report_settings.get(server['id'],True),'telegram_resource_metrics':report_metrics.get(server['id'],list(RESOURCE_REPORT_METRICS)),'resources':result} for server,result in probes)
             now=time.monotonic()
             for status in current:
                 resources=status['resources'];prior=previous.get(status['id']);rx=resources.get('net_rx_bytes',0);tx=resources.get('net_tx_bytes',0)
@@ -2170,6 +2234,16 @@ def server(host,port):
             value=morsel.value; entry=SESSIONS.get(value)
             if not entry:return None
             if entry['expires']<time.time():SESSIONS.pop(value,None);return None
+            if entry.get('telegram_id') and entry.get('telegram_role') in ('admin','viewer'):
+                try:
+                    config=load_telegram_miniapp_config()
+                    current=telegram_miniapp_role(config,entry['telegram_id'])
+                except (OSError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+                    current=None
+                if current!=entry['telegram_role']:
+                    SESSIONS.pop(value,None)
+                    return None
+                return current
             with db() as c:account_row=c.execute("SELECT role,totp_enabled FROM accounts WHERE name=?",(entry['name'],)).fetchone()
             if not account_row:SESSIONS.pop(value,None);return None
             if account_row['role']=='admin' and not account_row['totp_enabled'] and entry['name']!='avatun-telegram':return 'mfa_setup'
@@ -2188,6 +2262,10 @@ def server(host,port):
             from urllib.parse import urlsplit, parse_qs
             request=urlsplit(self.path)
             route=request.path
+            if route=="/telegram-miniapp":
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/telegram-miniapp.html"
+                if not f.is_file():return self.send(404,{"error":"Telegram Mini App is not installed"})
+                return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
             if route=="/":
                 # Older bookmarks may still append credentials to the panel URL.
                 # Never keep those credentials in the address bar or access logs.
@@ -2224,6 +2302,8 @@ def server(host,port):
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'telegram-config','id':'telegram-config','action':'status'}))
                 except Exception as e:return self.send(502,{'error':str(e)})
+            if route=="/api/v1/settings/theme":
+                session=self.session();return self.send(200,{'palette':account_theme(session['name'])})
             if route=="/api/v1/updates":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,github_update_status())
@@ -2270,7 +2350,10 @@ def server(host,port):
                 remote=attach_speedtests([dict(item,server_id=status["id"]) for status in statuses if status["id"]!="local" for item in status.get("tunnels",[])])
                 return self.send(200,{"items":[*local,*remote]})
             if route=="/api/v1/tunnels":return self.send(200,{"items":attach_speedtests(rows())})
-            if route=="/api/v1/servers":return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity"))} for s in server_rows()]})
+            if route=="/api/v1/servers":
+                settings=resource_report_settings()
+                metrics=resource_report_metrics()
+                return self.send(200,{"items":[{k:v for k,v in s.items() if k!="identity"}|{"has_identity":bool(s.get("identity")),"telegram_resources_enabled":settings.get(s['id'],True),"telegram_resource_metrics":metrics.get(s['id'],list(RESOURCE_REPORT_METRICS))} for s in server_rows()]})
             if route=="/api/v1/geoip/local":
                 try:
                     result=geoip_location()
@@ -2280,7 +2363,9 @@ def server(host,port):
                 with MONITOR_LOCK:statuses=[dict(item,tunnels=attach_speedtests(item.get("tunnels",[]))) for item in MONITOR_SERVERS]
                 return self.send(200,{"items":statuses})
             if route=="/api/v1/servers/resources":
-                with MONITOR_LOCK:resources=[dict(item) for item in MONITOR_RESOURCES]
+                settings=resource_report_settings()
+                metrics=resource_report_metrics()
+                with MONITOR_LOCK:resources=[dict(item,telegram_resources_enabled=settings.get(item['id'],True),telegram_resource_metrics=metrics.get(item['id'],list(RESOURCE_REPORT_METRICS))) for item in MONITOR_RESOURCES]
                 return self.send(200,{"items":resources})
             bits=route.strip("/").split("/")
             if len(bits)==7 and bits[:3]==["api","v1","servers"] and bits[4]=="tunnels" and bits[6]=="config":
@@ -2329,6 +2414,19 @@ def server(host,port):
                 except Exception as e:return self.send(502,{"error":str(e)})
             return self.send(404,{"error":"not found"})
         def do_POST(self):
+            if self.path=="/api/v1/telegram/miniapp/auth":
+                try:
+                    data=self.body();init_data=data.get('init_data')
+                    config=load_telegram_miniapp_config()
+                    verified=verify_init_data(init_data,config['bot_token'])
+                    user_id=verified['user_id'];mini_role=telegram_miniapp_role(config,user_id)
+                    if mini_role is None:return self.send(403,{'error':'این حساب تلگرام برای Mini App مجاز نیست.'})
+                    token=_new_session('avatun-telegram',mini_role,True)
+                    SESSIONS[token].update({'telegram_id':user_id,'telegram_role':mini_role})
+                    self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.session_cookie(token)
+                    payload=json.dumps({'ok':True,'role':mini_role,'telegram_id':user_id,'display_name':str((verified.get('user') or {}).get('first_name') or '')[:80]},ensure_ascii=False).encode();self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as e:
+                    return self.send(401,{'error':str(e)[:180]})
             if self.path=="/api/v1/auth/login":
                 try:
                     data=self.body();name=data.get("username","");password=data.get("password","")
@@ -2447,6 +2545,23 @@ def server(host,port):
                         'bot_token':data.get('bot_token',''),'admin_ids':data.get('admin_ids')})
                     if result.get('error'):return self.send(400,result)
                     return self.send(202,result)
+                except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/settings/theme":
+                if role not in ("admin","operator","viewer"):return self.send(403,{"error":"sign in required"})
+                try:
+                    data=self.body();session=self.session()
+                    return self.send(200,{'ok':True,'palette':set_account_theme(session['name'],data.get('palette','teal'))})
+                except Exception as e:return self.send(400,{'error':str(e)})
+            if self.path=="/api/v1/servers/resources":
+                if role!="admin":return self.send(403,{"error":"admin role required"})
+                try:
+                    data=self.body();server_id=data.get('server_id','');enabled=data.get('telegram_resources_enabled');metrics=data.get('telegram_resource_metrics')
+                    if not isinstance(server_id,str) or (enabled is not None and not isinstance(enabled,bool)) or (metrics is not None and not isinstance(metrics,list)):raise ValueError('تنظیم گزارش منابع نامعتبر است')
+                    if enabled is not None:set_resource_report_enabled(server_id,enabled)
+                    if metrics is not None:set_resource_report_metrics(server_id,metrics)
+                    settings=resource_report_settings();selected=resource_report_metrics().get(server_id,list(RESOURCE_REPORT_METRICS))
+                    with MONITOR_LOCK:resources=[dict(item) for item in MONITOR_RESOURCES]
+                    return self.send(200,{'ok':True,'server_id':server_id,'telegram_resources_enabled':settings.get(server_id,True),'telegram_resource_metrics':selected,'items':resources})
                 except Exception as e:return self.send(400,{'error':str(e)})
             if self.path=="/api/v1/updates":
                 if role!="admin":return self.send(403,{"error":"admin role required"})

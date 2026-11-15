@@ -193,6 +193,7 @@ install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets
 install -d -o root -g root -m 0755 /opt/tunnelmgr/packaging/systemd
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnelctl.py" /opt/tunnelmgr/tunnelmgr/tunnelctl.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_bot.py" /opt/tunnelmgr/tunnelmgr/telegram_bot.py
+install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_miniapp.py" /opt/tunnelmgr/tunnelmgr/telegram_miniapp.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_console.py" /opt/tunnelmgr/tunnelmgr/telegram_console.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_ui.py" /opt/tunnelmgr/tunnelmgr/telegram_ui.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_resources.py" /opt/tunnelmgr/tunnelmgr/telegram_resources.py
@@ -214,6 +215,7 @@ install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr-github-update
 install -o root -g root -m 0644 "$ROOT"/packaging/systemd/*.service /opt/tunnelmgr/packaging/systemd/
 install -o root -g root -m 0644 "$ROOT"/packaging/systemd/*.timer /opt/tunnelmgr/packaging/systemd/
 install -o root -g root -m 0644 "$ROOT/web/index.html" /opt/tunnelmgr/web/index.html
+install -o root -g root -m 0644 "$ROOT/web/telegram-miniapp.html" /opt/tunnelmgr/web/telegram-miniapp.html
 install -o root -g root -m 0644 "$ROOT/web/assets/"* /opt/tunnelmgr/web/assets/
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc/systemd/system/tunnelmgr.service
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service
