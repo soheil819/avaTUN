@@ -59,7 +59,9 @@ token field blank to retain the current token. Panel authorization still applies
 in addition to the Telegram roles. The legacy `chat_id` configuration remains
 supported with viewer access.
 
-Create `/etc/avatun/telegram.json` on the central panel server:
+The panel creates `/etc/avatun/telegram.json` automatically when the bot token
+and the first administrator are saved in **Settings → Telegram bot**. A manual
+file is only needed for older installations:
 
 ```json
 {
@@ -80,10 +82,11 @@ list from **Settings → Telegram bot** in the web panel. The token is never sen
 back to the browser; saving enables and restarts the bot service automatically.
 Enter the panel's domain in **Settings → TLS certificate** and issue its
 certificate. The same domain and certificate are then used automatically for
-the webhook; no separate bot domain setting is required. TCP port 8443 must be
-reachable from the public internet. When the domain or certificate changes, the
-panel refreshes the bot webhook automatically. Certificate renewal also reloads
-the bot's TLS listener.
+the webhook and the Mini App; no `mini_app_url` field or separate bot domain
+setting is required. TCP port 8443 must be reachable from the public internet.
+When the domain or certificate changes, the panel refreshes the bot webhook,
+Mini App menu button, and bot service automatically. Certificate renewal also
+reloads the bot's TLS listener.
 
 User IDs must be positive numbers. Only private chats where the sender and chat
 ID match an allowed user are accepted. Add a viewer to `viewers` to permit status
@@ -112,14 +115,15 @@ outgoing error messages and network exceptions are logged by type only.
 
 ### Telegram Mini App
 
-`/app` opens the standalone Telegram Mini App at `/telegram-miniapp`. The Mini
-App is separate from the main web-panel UI and authenticates Telegram's signed
-`initData` server-side before issuing a short-lived panel session. It exposes
-the live dashboard, server health and resources, tunnel start/stop/rebuild,
-forward management, activity, and administrator update controls. The URL must
-be HTTPS; by default the bot derives it from `panel_url`. Only Telegram IDs in
-`admins` or `viewers` can authenticate, and the role is rechecked on every
-request.
+`/app` opens the standalone Telegram Mini App at `/telegram-miniapp`. When the
+panel TLS certificate is ready, the bot automatically exposes the Mini App in
+the Telegram chat menu and in `/start`; no manual JSON edit or BotFather menu
+setup is required. The Mini App is separate from the main web-panel UI and
+authenticates Telegram's signed `initData` server-side before issuing a
+short-lived panel session. It exposes the live dashboard, server health and
+resources, tunnel start/stop/rebuild, forward management, activity, and
+administrator update controls. Only Telegram IDs in `admins` or `viewers` can
+authenticate, and the role is rechecked on every request.
 
 Run the regression checks with `python3 scripts/check-telegram.py`.
 

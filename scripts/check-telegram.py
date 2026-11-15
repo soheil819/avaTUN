@@ -120,6 +120,17 @@ class BotChecks(unittest.TestCase):
         for value in ('secret-token', 'secret-password', 'abc', 'xyz'):
             self.assertNotIn(value, result)
 
+    def test_mini_app_is_derived_from_ready_panel_tls(self):
+        status = pathlib.Path(self.folder.name) / 'panel-tls-status.json'
+        status.write_text(json.dumps({'state': 'ready', 'domain': 'panel.example.com', 'port': 18443}))
+        self.bot.config['panel_tls_status_path'] = str(status)
+        self.assertEqual('https://panel.example.com:18443/telegram-miniapp', self.bot.mini_app_url())
+        self.bot.configure_menu_button()
+        request = self.telegram.requests[-1]
+        self.assertEqual('setChatMenuButton', request[0])
+        self.assertEqual('https://panel.example.com:18443/telegram-miniapp',
+                         request[1]['menu_button']['web_app']['url'])
+
     def test_offset_persists_after_restart(self):
         self.update(1, '/start')
         self.state.connection.close()

@@ -573,7 +573,23 @@ class Bot(ResourceMixin, ConsoleMixin):
         """Return the public Telegram Mini App URL when it is safe to expose."""
         value = self.config.get('mini_app_url')
         if not value:
-            value = self.config.get('panel_url', '').rstrip('/') + '/telegram-miniapp'
+            panel_url = self.config.get('panel_url', '')
+            panel = urllib.parse.urlsplit(panel_url)
+            if panel.scheme == 'https' and panel.hostname:
+                value = panel_url.rstrip('/') + '/telegram-miniapp'
+            else:
+                status_path = pathlib.Path(self.config.get(
+                    'panel_tls_status_path', '/var/lib/tunnelmgr/panel-tls-status.json'))
+                try:
+                    tls = json.loads(status_path.read_text())
+                    domain = str(tls.get('domain', '')).strip().rstrip('.')
+                    port = int(tls.get('port', 0))
+                    if tls.get('state') == 'ready' and re.fullmatch(
+                            r'(?i)(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}', domain):
+                        host = domain if port == 443 else f'{domain}:{port}'
+                        value = 'https://' + host + '/telegram-miniapp'
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    value = ''
         try:
             parsed = urllib.parse.urlsplit(value)
         except ValueError:
@@ -581,6 +597,22 @@ class Bot(ResourceMixin, ConsoleMixin):
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             return ''
         return value
+
+    def configure_menu_button(self):
+        """Expose the Mini App from Telegram's chat menu when HTTPS is ready."""
+        url = self.mini_app_url()
+        if not url:
+            return
+        try:
+            self.telegram.request('setChatMenuButton', {
+                'menu_button': {
+                    'type': 'web_app',
+                    'text': 'avaTUN',
+                    'web_app': {'url': url},
+                }
+            })
+        except Exception as error:
+            logging.warning('Mini App menu button setup failed (%s: %s)', type(error).__name__, str(error)[:160])
 
     def mini_app(self, user_id):
         """Send a focused launch card without replacing the bot console message."""
@@ -1719,6 +1751,7 @@ class Bot(ResourceMixin, ConsoleMixin):
             raise RuntimeError('Polling requires removing the existing webhook first')
         self.telegram.request('setMyCommands', {'commands': [
             {'command': 'start', 'description': 'منوی مدیریت avaTUN'},
+            {'command': 'app', 'description': 'بازکردن Mini App'},
             {'command': 'status', 'description': 'نمای کلی شبکه'},
             {'command': 'servers', 'description': 'فهرست سرورها'},
             {'command': 'tunnels', 'description': 'وضعیت زندهٔ تونل‌ها'},
@@ -1730,9 +1763,10 @@ class Bot(ResourceMixin, ConsoleMixin):
             if role=='admin':
                 self.telegram.request('setMyCommands',{'scope':{'type':'chat','chat_id':user_id},'commands':[
                     {'command':name,'description':label} for name,label in (
-                    ('start','خانه'),('servers','سرورها'),('tunnels','تونل‌ها'),('hardware','منابع'),
+                    ('start','خانه'),('app','بازکردن Mini App'),('servers','سرورها'),('tunnels','تونل‌ها'),('hardware','منابع'),
                     ('forwards','فوروارد'),('report','گزارش 24 ساعت'),('update','به‌روزرسانی پنل'),
                     ('audit','عملیات اخیر'),('settings','تنظیمات و راهنما'),('cancel','لغو فرم جاری'))]})
+        self.configure_menu_button()
         self.set_status('ready')
         if webhook_mode:
             self.start_webhook()
