@@ -22,6 +22,7 @@ REF = 'main'
 API = f'https://api.github.com/repos/{OWNER}/{REPOSITORY}'
 RAW = f'https://raw.githubusercontent.com/{OWNER}/{REPOSITORY}'
 STATUS = pathlib.Path('/var/lib/tunnelmgr/github-update.json')
+ATTESTATION_CACHE = pathlib.Path('/var/lib/tunnelmgr/attestations')
 INSTALLED_APP = pathlib.Path('/opt/tunnelmgr/tunnelmgr/tunnelctl.py')
 USER_AGENT = 'avaTUN-update-checker'
 VERSION_RE = re.compile(r'^APP_VERSION\s*=\s*[\'\"](\d+(?:\.\d+){2,3})[\'\"]', re.M)
@@ -43,6 +44,16 @@ def request(url, accept='application/vnd.github+json', timeout=20):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
+
+
+def is_github_rate_limit(error):
+    if not isinstance(error, urllib.error.HTTPError) or error.code != 403:
+        return False
+    try:
+        detail = error.read(4096).decode('utf-8', 'replace').lower()
+    except Exception:
+        detail = str(error).lower()
+    return 'rate limit' in detail
 
 
 def installed_version():
@@ -98,23 +109,32 @@ def verify_release_archive(archive, version):
     digest=hashlib.sha256()
     with archive.open('rb') as stream:
         for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
-    metadata=json.loads(request(f'{API}/attestations/sha256:{digest.hexdigest()}'))
-    entries=metadata.get('attestations',[])
-    if not isinstance(entries,list) or not entries:
-        raise RuntimeError('GitHub returned no attestations for the release archive.')
-    bundles=[]
-    for entry in entries:
-        bundle=entry.get('bundle')
-        if bundle is None and entry.get('bundle_url'):
-            parsed=urllib.parse.urlsplit(entry['bundle_url'])
-            if parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.blob.core.windows.net') or parsed.username or parsed.password:
-                raise RuntimeError('GitHub returned an invalid attestation bundle URL.')
-            try:
-                import snappy
-                bundle=json.loads(snappy.uncompress(request(entry['bundle_url'],'application/octet-stream',60)))
-            except Exception as error:
-                raise RuntimeError('Could not download or decompress the GitHub attestation bundle.') from error
-        if isinstance(bundle,dict):bundles.append(json.dumps(bundle,separators=(',',':')))
+    cached_bundle = ATTESTATION_CACHE / f'{digest.hexdigest()}.jsonl'
+    try:
+        metadata=json.loads(request(f'{API}/attestations/sha256:{digest.hexdigest()}'))
+    except urllib.error.HTTPError as error:
+        if not is_github_rate_limit(error) or not cached_bundle.is_file():
+            raise
+        bundles = [line for line in cached_bundle.read_text().splitlines() if line.strip()]
+        if not bundles or any(not isinstance(json.loads(line), dict) for line in bundles):
+            raise RuntimeError('Cached release attestations are invalid.') from error
+    else:
+        entries=metadata.get('attestations',[])
+        if not isinstance(entries,list) or not entries:
+            raise RuntimeError('GitHub returned no attestations for the release archive.')
+        bundles=[]
+        for entry in entries:
+            bundle=entry.get('bundle')
+            if bundle is None and entry.get('bundle_url'):
+                parsed=urllib.parse.urlsplit(entry['bundle_url'])
+                if parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.blob.core.windows.net') or parsed.username or parsed.password:
+                    raise RuntimeError('GitHub returned an invalid attestation bundle URL.')
+                try:
+                    import snappy
+                    bundle=json.loads(snappy.uncompress(request(entry['bundle_url'],'application/octet-stream',60)))
+                except Exception as error:
+                    raise RuntimeError('Could not download or decompress the GitHub attestation bundle.') from error
+            if isinstance(bundle,dict):bundles.append(json.dumps(bundle,separators=(',',':')))
     if not bundles:
         raise RuntimeError('GitHub returned no usable release attestation bundles.')
     bundle_path=archive.with_name(archive.name+'.attestations.jsonl')
@@ -153,6 +173,51 @@ def write_status(data):
     os.replace(temp, STATUS)
 
 
+def cached_release_after_rate_limit(previous, current, error):
+    """Reuse a recently checked release only when GitHub applies its API limit."""
+    if not isinstance(error, urllib.error.HTTPError) or error.code != 403:
+        return None
+    try:
+        detail = error.read(4096).decode('utf-8', 'replace').lower()
+    except Exception:
+        detail = str(error).lower()
+    if 'rate limit' not in detail:
+        return None
+    try:
+        latest = previous.get('latest_version')
+        version_tuple(latest)
+        checked_at = float(previous.get('checked_at', 0))
+        commit = previous.get('latest_commit', '')
+        archive = previous.get('archive_url', '')
+        commit_url = previous.get('commit_url', '')
+        update_available = previous.get('update_available') is True
+        version_is_usable = (
+            version_tuple(latest) > version_tuple(current) if update_available
+            else version_tuple(latest) == version_tuple(current)
+        )
+        valid = (
+            previous.get('repository') == f'{OWNER}/{REPOSITORY}'
+            and previous.get('ref') == REF
+            and isinstance(previous.get('update_available'), bool)
+            and previous.get('current_version') == current
+            and version_is_usable
+            and time.time() - checked_at <= 6 * 60 * 60
+            and re.fullmatch(r'[0-9a-f]{40}', commit)
+            and commit_url == f'https://github.com/{OWNER}/{REPOSITORY}/commit/{commit}'
+            and (not update_available or archive == f'https://github.com/{OWNER}/{REPOSITORY}/releases/download/{latest}/avaTUN-{latest}.tar.gz')
+        )
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        return None
+    return {
+        **previous, 'current_version': current,
+        'state': 'available' if update_available else 'current',
+        'checked_at': time.time(), 'error': None, 'stale': True,
+        'check_note': 'Using a recently verified release because GitHub API rate limit was reached.',
+    }
+
+
 def check(save=True):
     previous = read_status()
     current = installed_version()
@@ -171,10 +236,12 @@ def check(save=True):
             'checked_at': time.time(), 'error': None,
         }
     except Exception as error:
-        status = {
+        status = cached_release_after_rate_limit(previous, current, error)
+        if status is None:
+            status = {
             **previous, 'current_version': current, 'checked_at': time.time(),
             'state': 'error', 'error': f'{type(error).__name__}: {str(error)[:300]}',
-        }
+            }
     if save:
         write_status(status)
     return status
