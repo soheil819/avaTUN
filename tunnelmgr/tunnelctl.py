@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.46"
+APP_VERSION="0.2.47"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -90,6 +90,15 @@ def verify_password(password, encoded):
 def _mfa_fernet():
     from cryptography.fernet import Fernet
     key_path=BASE/'mfa.key'
+    if not key_path.exists() and DB.is_file():
+        try:
+            with sqlite3.connect(DB.resolve().as_uri()+'?mode=ro',uri=True) as c:
+                tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                columns={r[1] for r in c.execute('PRAGMA table_info(accounts)')} if 'accounts' in tables else set()
+                if 'totp_enabled' in columns and c.execute('SELECT 1 FROM accounts WHERE totp_enabled=1 LIMIT 1').fetchone():
+                    raise RuntimeError(f'{key_path} is missing while MFA is enabled; refusing to create a replacement key')
+        except sqlite3.Error as e:
+            raise RuntimeError(f'cannot verify MFA state before creating {key_path}') from e
     try:
         fd=os.open(key_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     except FileExistsError:pass
