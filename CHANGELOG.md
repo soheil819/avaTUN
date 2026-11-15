@@ -1,3 +1,8 @@
+## avaTUN 0.2.32 · محدودیت MTU و آزمون سرعت
+
+- Cap automatically recommended tunnel MTU at 1400, even when path discovery reports a larger value.
+- Run iperf3 without omitting its first second, which returned zero throughput on the Finland → tofin-1 L2TPv3 path.
+
 ## avaTUN 0.2.31 · پردازش پیام‌های webhook
 
 - Process webhook updates on the bot's main thread so its SQLite state is accessed safely.

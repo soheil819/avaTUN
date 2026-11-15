@@ -19,6 +19,8 @@ editing one upgrades it to an IP tunnel through the coordinated rebuild path.
 
 Ping, iperf3 and HAProxy use the actual inner peer address through the named
 interface. A dummy/loopback address is never presented as a tunnel peer.
+Automatically recommended tunnel MTU values are capped at 1400, even when the
+measured outer path allows a larger packet.
 
 The complete offline-buildable core is under `vendor/backhaul/source`:
 

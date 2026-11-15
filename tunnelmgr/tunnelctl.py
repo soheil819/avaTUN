@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.31"
+APP_VERSION="0.2.32"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -290,7 +290,7 @@ def iperf3_client(address,port,reverse=False,source=None):
     address=str(ipaddress.ip_address(address));port=int(port)
     binary=shutil.which('iperf3')
     if not binary:raise RuntimeError('iperf3 is not installed on this tunnel endpoint; update the server installer first')
-    args=[binary,'-c',address,'-p',str(port),'-t','3','-O','1','--connect-timeout','3000','-J']
+    args=[binary,'-c',address,'-p',str(port),'-t','3','--connect-timeout','3000','-J']
     if reverse:args.append('-R')
     if source:args.extend(['-B',str(ipaddress.ip_address(source))])
     result=subprocess.run(args,capture_output=True,text=True,timeout=12)
@@ -302,7 +302,7 @@ def iperf3_client(address,port,reverse=False,source=None):
     return round(bps/1_000_000,2)
 
 def remote_iperf3(server,payload):
-    code='''import json,ipaddress,os,shutil,signal,subprocess,sys,time\nd=json.load(sys.stdin);op=d.get("op");out={}\nif op=="start":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n if not 1024<=port<=65535:raise ValueError("iperf3 test port is outside the allowed range")\n child=subprocess.Popen([binary,"-s","-1","-B",addr,"-p",str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True);time.sleep(.2)\n if child.poll() is not None:raise RuntimeError("iperf3 could not start its temporary listener")\n out={"pid":child.pid}\nelif op=="stop":\n try:os.kill(int(d["pid"]),signal.SIGTERM)\n except ProcessLookupError:pass\n out={"ok":True}\nelif op=="client":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n args=[binary,"-c",addr,"-p",str(port),"-t","3","-O","1","--connect-timeout","3000","-J"]\n if d.get("reverse"):args.append("-R")\n if d.get("source"):args.extend(["-B",str(ipaddress.ip_address(d["source"]))])\n result=subprocess.run(args,capture_output=True,text=True,timeout=12)\n if result.returncode:raise RuntimeError((result.stderr or result.stdout or "iperf3 client failed").strip()[-500:])\n report=json.loads(result.stdout);end=report["end"];received=end.get("sum_received") or end.get("sum") or {};bps=float(received.get("bits_per_second",0))\n if bps<=0:raise RuntimeError("iperf3 completed without reporting received throughput")\n out={"mbps":round(bps/1000000,2)}\nelse:raise ValueError("unsupported iperf3 operation")\nprint(json.dumps(out))'''
+    code='''import json,ipaddress,os,shutil,signal,subprocess,sys,time\nd=json.load(sys.stdin);op=d.get("op");out={}\nif op=="start":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n if not 1024<=port<=65535:raise ValueError("iperf3 test port is outside the allowed range")\n child=subprocess.Popen([binary,"-s","-1","-B",addr,"-p",str(port)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True);time.sleep(.2)\n if child.poll() is not None:raise RuntimeError("iperf3 could not start its temporary listener")\n out={"pid":child.pid}\nelif op=="stop":\n try:os.kill(int(d["pid"]),signal.SIGTERM)\n except ProcessLookupError:pass\n out={"ok":True}\nelif op=="client":\n addr=str(ipaddress.ip_address(d["address"]));port=int(d["port"]);binary=shutil.which("iperf3")\n if not binary:raise RuntimeError("iperf3 is not installed on this tunnel endpoint; update the server installer first")\n args=[binary,"-c",addr,"-p",str(port),"-t","3","--connect-timeout","3000","-J"]\n if d.get("reverse"):args.append("-R")\n if d.get("source"):args.extend(["-B",str(ipaddress.ip_address(d["source"]))])\n result=subprocess.run(args,capture_output=True,text=True,timeout=12)\n if result.returncode:raise RuntimeError((result.stderr or result.stdout or "iperf3 client failed").strip()[-500:])\n report=json.loads(result.stdout);end=report["end"];received=end.get("sum_received") or end.get("sum") or {};bps=float(received.get("bits_per_second",0))\n if bps<=0:raise RuntimeError("iperf3 completed without reporting received throughput")\n out={"mbps":round(bps/1000000,2)}\nelse:raise ValueError("unsupported iperf3 operation")\nprint(json.dumps(out))'''
     remote='runuser -u tunnelmgr -- /usr/bin/python3 -c '+shlex.quote(code)
     result=subprocess.run(ssh_argv(server)+[remote],input=json.dumps(payload),capture_output=True,text=True,timeout=25)
     if result.returncode:raise RuntimeError((result.stderr or result.stdout or 'remote iperf3 command failed')[-800:])
@@ -425,7 +425,7 @@ def recommended_tunnel_mtu(server_a,server_b,host_a,host_b,transport):
     effective=min(int(local_probe["mtu"]),int(peer_probe["mtu"]))-overhead[transport]
     min_mtu=1280 if transport in ("sit-6to4","sit-fou","sit-isatap") else 576
     if effective<min_mtu:raise ValueError(f"Measured path MTU is too small for {transport} after encapsulation overhead ({effective})")
-    return {"mtu":min(9000,effective),"path_mtu_a":local_probe["mtu"],"path_mtu_b":peer_probe["mtu"],"overhead":overhead[transport],"method_a":local_probe.get("method"),"method_b":peer_probe.get("method")}
+    return {"mtu":min(1400,effective),"path_mtu_a":local_probe["mtu"],"path_mtu_b":peer_probe["mtu"],"overhead":overhead[transport],"method_a":local_probe.get("method"),"method_b":peer_probe.get("method")}
 
 def ssh_argv(server):
     try:ipaddress.ip_address(server["host"].strip("[]"));host=f'[{server["host"].strip("[]")}]' if ":" in server["host"] else server["host"]
