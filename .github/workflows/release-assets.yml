@@ -1,0 +1,40 @@
+name: Build and attest release archive
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  archive:
+    if: startsWith(github.event.release.tag_name, '0.2.')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Package source archive
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="avaTUN-${RELEASE_TAG}/" "$GITHUB_SHA" > "dist/avaTUN-${RELEASE_TAG}.tar.gz"
+
+      - name: Attest source archive
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/avaTUN-${{ github.event.release.tag_name }}.tar.gz
+
+      - name: Attach archive to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" "dist/avaTUN-${RELEASE_TAG}.tar.gz" --clobber
