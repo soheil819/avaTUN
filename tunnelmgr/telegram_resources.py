@@ -17,6 +17,7 @@ class ResourceMixin:
     def resource_items(self, scope):
         items = self.panel.request('/api/v1/servers/resources',timeout=8).get('items',[])
         if scope!='all':items=[x for x in items if str(x.get('id'))==scope]
+        else:items=[x for x in items if x.get('telegram_resources_enabled',True)]
         return items or [{'id':scope if scope!='all' else 'local','name':'منابع سرور','reachable':False}]
 
     def resource_payload(self, items, page, selected=''):
@@ -45,12 +46,15 @@ class ResourceMixin:
         rows=[paging] if paging and not widget else []
         rows.append([button('ادامهٔ پایش' if paused else 'توقف پایش','resource-resume' if paused else 'resource-pause'),
                      button('↻ تازه‌سازی','refresh')])
+        enabled=bool(state['x'].get('telegram_resources_enabled',True))
+        rows.append([button('گزارش مصرف این سرور: '+('خاموش' if enabled else 'روشن'),'resource-toggle')])
         back='open:server:'+scope if scope!='all' else 'nav:overview'
         rows.append([button('بازگشت',back),button('خانه','nav:overview')])
         return rows
 
     def resource_text(self, state, paused=False):
         x=state['x'];r=x.get('resources') or {};checked=r.get('checked_at') or 0
+        selected=set(x.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'))
         good=bool(x.get('ok'))
         status='⏸ پایش متوقف است' if paused else '🟢 پایش زنده · هر 15 ثانیه'
         lines=['<b>منابع · '+escape(x.get('name','سرور'),80)+'</b>',
@@ -58,6 +62,7 @@ class ResourceMixin:
         if not good:lines+=['⚠️ آمار این سرور در دسترس نیست؛ مقادیر قبلی ممکن است قدیمی باشند.']
         elif x.get('stale'):lines+=['⚠️ نمونهٔ منابع قدیمی است.']
         for name,key in (('CPU','cpu'),('RAM','memory'),('دیسک','disk'),('Swap','swap')):
+            if key not in selected:continue
             value=r.get(key+'_percent')
             known=good and value is not None
             if key=='swap' and known and not r.get('swap_total_bytes'):
@@ -68,8 +73,10 @@ class ResourceMixin:
                     '<code>'+bar+'</code>' if known else 'نمونه‌ای دریافت نشده است.']
             if known and key!='cpu':
                 lines.append(escape(self.resource_size(r.get(key+'_used_bytes'))+' / '+self.resource_size(r.get(key+'_total_bytes'))))
-        lines+=['','↓ دانلود: '+escape(self.resource_size(r.get('download_bytes_per_sec'))+'/s' if good else '—'),
-                '↑ آپلود: '+escape(self.resource_size(r.get('upload_bytes_per_sec'))+'/s' if good else '—')]
+        if 'network' in selected:
+            lines+=['','↓ دانلود: '+escape(self.resource_size(r.get('download_bytes_per_sec'))+'/s' if good else '—'),
+                    '↑ آپلود: '+escape(self.resource_size(r.get('upload_bytes_per_sec'))+'/s' if good else '—')]
+        if not selected:lines+=['','هیچ شاخصی برای گزارش انتخاب نشده است.']
         age=f'{max(0,int(time.time()-checked))} ثانیه قبل' if checked else 'نامشخص'
         lines+=['','<i>زمان نمونه: '+age+f" · سرور {state['p']+1} از {state['n']}"+'</i>']
         if not paused:lines+=['<i>پایش خودکار تا 10 دقیقه؛ با ادامهٔ پایش تمدید می‌شود.</i>']

@@ -467,7 +467,8 @@ def server_widget_state(snapshot, page, selected=''):
         ident = str(server.get('id', ''))
         status = statuses.get(ident, {})
         resource = resources.get(ident, {})
-        metrics = resource.get('resources') or resource
+        selected=set(resource.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'))
+        metrics = (resource.get('resources') or resource) if resource.get('telegram_resources_enabled', True) else {}
         count = sum(ident in endpoints for endpoints in groups.values())
         reachable = status.get('reachable')
         items.append({'id': ident[:48], 'name': ('سرور مرکزی' if ident == 'local' else str(server.get('name') or server.get('label') or ident))[:64],
@@ -476,7 +477,7 @@ def server_widget_state(snapshot, page, selected=''):
                       'tunnels': count, 'version': str(status.get('app_version') or '—')[:24],
                       'service': 'فعال' if status.get('services') and all(x == 'active' for x in status['services']) else 'بررسی شود',
                       'ssh': 'در دسترس' if reachable is True else 'قطع' if reachable is False else 'نامشخص',
-                      'cpu': metrics.get('cpu_percent'), 'ram': metrics.get('memory_percent'),
+                      'cpu': metrics.get('cpu_percent') if 'cpu' in selected else None, 'ram': metrics.get('memory_percent') if 'memory' in selected else None,
                       'selected': ident == selected})
     if selected and not any(item['id'] == selected for item in items):
         selected = ''
@@ -717,30 +718,32 @@ class Bot(ResourceMixin, ConsoleMixin):
             entries=pages(servers,page_index,'سرورها')
             state['rows']=[]
             for item in entries:
-                ident=str(item.get('id',''));status=statuses.get(ident,{});resource=resources.get(ident,{}).get('resources') or resources.get(ident,{})
+                ident=str(item.get('id',''));status=statuses.get(ident,{});source=resources.get(ident,{});selected=set(source.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'));resource=source.get('resources') or source
                 reachable=status.get('reachable');health='up' if reachable is True else 'down' if reachable is False else 'unknown'
                 count=sum(ident in endpoints for endpoints in groups.values())
-                state['rows'].append(row(item.get('name') or item.get('label') or ident,[item.get('host') or '—',f'{count} تونل · نسخه {status.get("app_version") or "—"}',f'CPU {resource.get("cpu_percent","—")}% · RAM {resource.get("memory_percent","—")}%'],health,{'up':'آنلاین','down':'قطع','unknown':'نامشخص'}[health],f'open:server:{ident}'))
+                metric_parts=([f'CPU {resource.get("cpu_percent","—")}%'] if 'cpu' in selected else [])+([f'RAM {resource.get("memory_percent","—")}%'] if 'memory' in selected else [])+([f'دیسک {resource.get("disk_percent","—")}%'] if 'disk' in selected else [])
+                state['rows'].append(row(item.get('name') or item.get('label') or ident,[item.get('host') or '—',f'{count} تونل · نسخه {status.get("app_version") or "—"}',' · '.join(metric_parts) or 'هیچ شاخصی انتخاب نشده'],health,{'up':'آنلاین','down':'قطع','unknown':'نامشخص'}[health],f'open:server:{ident}'))
             state['actions']=[]
         elif page == 'server':
             item=next((x for x in servers if str(x.get('id'))==selected),None)
             if not item:raise PanelError('سرور انتخاب‌شده پیدا نشد.')
-            ident=str(item['id']);status=statuses.get(ident,{});res=resources.get(ident,{}).get('resources') or resources.get(ident,{})
+            ident=str(item['id']);status=statuses.get(ident,{});source=resources.get(ident,{});selected=set(source.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'));res=(source.get('resources') or source) if source.get('telegram_resources_enabled',True) else {}
             health='up' if status.get('reachable') is True else 'down' if status.get('reachable') is False else 'unknown'
             state.update({'title':str(item.get('name') or ident)[:60],'summary':str(item.get('host') or '')[:60],
                           'rows':[row('اتصال',[f'SSH: {"متصل" if status.get("reachable") else "قطع/نامشخص"}',f'سرویس پنل: {"فعال" if status.get("services") and all(x=="active" for x in status["services"]) else "بررسی شود"}',f'نسخه {status.get("app_version") or "—"}'],health,{'up':'آنلاین','down':'قطع','unknown':'نامشخص'}[health]),
-                                  row('منابع',[f'CPU {res.get("cpu_percent","—")}% · Load {res.get("load_1m","—")}',f'RAM {res.get("memory_percent","—")}% · دیسک {res.get("disk_percent","—")}%',f'{sum(ident in e for e in groups.values())} تونل روی این سرور']),
+                                  row('منابع',([f'CPU {res.get("cpu_percent","—")}% · Load {res.get("load_1m","—")}' ] if 'cpu' in selected else [])+([f'RAM {res.get("memory_percent","—")}%'] if 'memory' in selected else [])+([f'دیسک {res.get("disk_percent","—")}%'] if 'disk' in selected else [])+([f'Swap {res.get("swap_percent","—")}%'] if 'swap' in selected else [])+([f'↓ {size(res.get("download_bytes_per_sec"))}/s · ↑ {size(res.get("upload_bytes_per_sec"))}/s'] if 'network' in selected else [])+[f'{sum(ident in e for e in groups.values())} تونل روی این سرور']),
                                   row('تونل‌های متصل به سرور',[', '.join(k for k,v in groups.items() if ident in v) or 'تونلی ثبت نشده'])],
                           'actions':[{'label':'تونل‌های سرور','query':'sp:t:'+ident},{'label':'منابع','query':'sp:r:'+ident},{'label':'بازگشت','query':'nav:servers'}]})
         elif page == 'resources':
-            entries=[resources[x['id']] for x in servers if x['id'] in resources]
+            entries=[resources[x['id']] for x in servers if x['id'] in resources and resources[x['id']].get('telegram_resources_enabled',True)]
             if server_id not in ('all','local'):entries=[x for x in entries if x.get('id')==server_id]
             elif server_id=='local':entries=[x for x in entries if x.get('id')=='local']
             visible=pages(entries,page_index,'منابع سرورها')
             state['rows']=[]
             for item in visible:
-                r=item.get('resources') or {};ident=str(item.get('id',''));checked=r.get('checked_at')
-                state['rows'].append(row(item.get('name') or ident,[item.get('host') or '—',f'CPU {r.get("cpu_percent","—")}% · RAM {r.get("memory_percent","—")}% · دیسک {r.get("disk_percent","—")}%',f'↓ {size(r.get("download_bytes_per_sec"))}/s · ↑ {size(r.get("upload_bytes_per_sec"))}/s · نمونه {duration(time.time()-checked) if checked else "نامشخص"} قبل']))
+                r=item.get('resources') or {};ident=str(item.get('id',''));checked=r.get('checked_at');selected=set(item.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'))
+                metric_parts=([f'CPU {r.get("cpu_percent","—")}%'] if 'cpu' in selected else [])+([f'RAM {r.get("memory_percent","—")}%'] if 'memory' in selected else [])+([f'دیسک {r.get("disk_percent","—")}%'] if 'disk' in selected else [])+([f'Swap {r.get("swap_percent","—")}%'] if 'swap' in selected else [])+([f'↓ {size(r.get("download_bytes_per_sec"))}/s · ↑ {size(r.get("upload_bytes_per_sec"))}/s'] if 'network' in selected else [])
+                state['rows'].append(row(item.get('name') or ident,[item.get('host') or '—',' · '.join(metric_parts) or 'هیچ شاخصی انتخاب نشده',f'نمونه {duration(time.time()-checked) if checked else "نامشخص"} قبل']))
         elif page == 'tunnels':
             entries=sorted((k,v) for k,v in groups.items() if server_id=='all' or server_id in v)
             visible=pages(entries,page_index,'تونل‌ها')
@@ -1607,10 +1610,14 @@ class Bot(ResourceMixin, ConsoleMixin):
             if state != 'unknown':
                 self.state.observe('tunnel:' + tunnel_id, 'تونل ' + tunnel_id + ' قطع است', state == 'down', now, 60, admins)
         for item in snapshot['resources']:
+            if item.get('telegram_resources_enabled', True) is False:
+                continue
             resources = item.get('resources') or {}
             if now - resources.get('checked_at', 0) > 120:
                 continue
+            selected=set(item.get('telegram_resource_metrics') or ('cpu','memory','swap','disk','network'))
             for field, label in [('cpu', 'CPU'), ('memory', 'RAM'), ('disk', 'دیسک')]:
+                if field not in selected:continue
                 value = resources.get(field + '_percent')
                 if not isinstance(value, (int, float)):
                     continue
