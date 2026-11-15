@@ -58,6 +58,17 @@ The routing page can configure paired BGP or OSPF profiles through FRR on both t
 
 For a source checkout already on the server, `sudo ./install.sh` runs the same installation without fetching from GitHub.
 
+### Remove avaTUN
+
+To remove the panel from this host, run `sudo ./uninstall.sh` and type
+`REMOVE AVATUN` at the confirmation prompt. This stops avaTUN services,
+including its managed virtual-network service instances, then removes the
+panel, bot, TLS configuration, and avaTUN state. It does not remove system
+packages or shared services such as FRR, HAProxy, Certbot, or StrongSwan; it
+also preserves firewall rules, swap, kernel modules, the `tunnelmgr` account,
+and installations on remote servers. Active tunnels managed by this panel on
+this host will be stopped.
+
 The installer includes the supplied, checksum-verified Backhaul TUN core and its manager for Linux amd64. It installs them on first setup and preserves an already installed manager/core on later panel updates. Other CPU architectures still install avaTUN, but need a matching Backhaul core package before they can create Backhaul TUN links. The core's license and third-party notices are in `vendor/backhaul/`.
 
 The underlying package installer is `scripts/install-preview.sh`; unlike `install.sh`, it is intended for updating an existing installation and does not create login credentials. Remote server updates transfer the same verified Backhaul assets. Existing accounts created under the former token scheme need a one-time password reset:
