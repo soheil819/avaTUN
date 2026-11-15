@@ -1,8 +1,8 @@
 # avaTUN | tunnel manager web panel
 
-**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. این پروژه در مرحلهٔ بتا است.**
+**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 1.0.0.1.**
 
-avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید. امکانات در مرحلهٔ بتا هستند؛ پیش از استفادهٔ عملیاتی، روی محیط آزمایشی بررسی کنید.
+avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید.
 
 ## نصب سریع
 
@@ -16,11 +16,11 @@ sudo bash scripts/install-from-github.sh
 
 اسکریپت آغاز نصب، فایل ریلیز را تا پیش از تأیید attestation امضاشدهٔ GitHub Actions اجرا نمی‌کند. سپس پیش‌نیازها را نصب می‌کند و نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
-**بتا:** avaTUN هنوز در حال توسعه است. ابتدا روی سرور آزمایشی نصب کنید و برای دسترسی امن از HTTPS استفاده کنید.
+نسخهٔ پایدار avaTUN 1.0.0.1 است. برای دسترسی امن، HTTPS پنل را از تنظیمات فعال کنید.
 
 ### English
 
-avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI and `python3-snappy`, clone the repository, and run its bootstrap script. It downloads the latest stable release through GitHub's public API and verifies its GitHub Actions attestation offline before running the release installer:
+avaTUN is a stable Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI and `python3-snappy`, clone the repository, and run its bootstrap script. It downloads the latest stable release through GitHub's public API and verifies its GitHub Actions attestation offline before running the release installer:
 
 ```sh
 git clone https://github.com/soheil819/avaTUN.git
@@ -60,14 +60,21 @@ For a source checkout already on the server, `sudo ./install.sh` runs the same i
 
 ### Remove avaTUN
 
-To remove the panel from this host, run `sudo ./uninstall.sh` and type
-`REMOVE AVATUN` at the confirmation prompt. This stops avaTUN services,
-including its managed virtual-network service instances, then removes the
-panel, bot, TLS configuration, and avaTUN state. It does not remove system
-packages or shared services such as FRR, HAProxy, Certbot, or StrongSwan; it
-also preserves firewall rules, swap, kernel modules, the `tunnelmgr` account,
-and installations on remote servers. Active tunnels managed by this panel on
-this host will be stopped.
+Run the uninstaller from the avaTUN source directory on the host you want to
+remove it from:
+
+```sh
+sudo ./uninstall.sh
+```
+
+Read the displayed scope, then type `REMOVE AVATUN` to confirm. The script
+stops the panel, Telegram bot, and avaTUN-managed local tunnel services, then
+removes the panel files, configuration, TLS data, and local application state.
+This stops active tunnels managed by avaTUN on that host. It does not remove
+system packages or shared services such as FRR, HAProxy, Certbot, or
+StrongSwan; it preserves firewall rules, swap, kernel modules, the
+`tunnelmgr` account, and avaTUN installations on remote servers. To remove a
+remote installation, run its own uninstaller on that remote host.
 
 The installer includes the supplied, checksum-verified Backhaul TUN core and its manager for Linux amd64. It installs them on first setup and preserves an already installed manager/core on later panel updates. Other CPU architectures still install avaTUN, but need a matching Backhaul core package before they can create Backhaul TUN links. The core's license and third-party notices are in `vendor/backhaul/`.
 
