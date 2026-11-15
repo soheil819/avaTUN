@@ -1,3 +1,8 @@
+## avaTUN 0.2.33 · سنجش و اعمال گروهی MTU
+
+- Wire the all-tunnels MTU button to a sequential per-tunnel probe and coordinated two-endpoint apply.
+- Show progress and a per-tunnel success or failure result; cap every applied automatic MTU at 1400.
+
 ## avaTUN 0.2.32 · محدودیت MTU و آزمون سرعت
 
 - Cap automatically recommended tunnel MTU at 1400, even when path discovery reports a larger value.
