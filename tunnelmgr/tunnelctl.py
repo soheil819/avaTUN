@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.39"
+APP_VERSION="0.2.40"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2077,7 +2077,7 @@ def server(host,port):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/Yekan.woff2";return self.send(200,f.read_bytes(),"font/woff2")
             if route=="/assets/world_equirectangular_4096x2048.png":
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/world_equirectangular_4096x2048.png";return self.send(200,f.read_bytes(),"image/png")
-            if route in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg"):
+            if route in ("/assets/mesh-central.svg", "/assets/mesh-iran.svg", "/assets/mesh-abroad.svg", "/assets/mesh-proxy.svg"):
                 f=pathlib.Path(__file__).resolve().parents[1]/"web"/route.lstrip("/");return self.send(200,f.read_bytes(),"image/svg+xml")
             if route=="/admin":
                 self.send_response(302);self.send_header("Location","/#accounts");self.send_header("Content-Length","0");self.end_headers();return

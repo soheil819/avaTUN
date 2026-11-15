@@ -1,0 +1,106 @@
+<svg viewBox="0 0 480 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="دروازهٔ ترافیک پروکسی" style="filter:drop-shadow(0 14px 18px rgba(0,0,0,.5))">
+  <style>@keyframes corePulse{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.06);opacity:.65}}.core-ring{transform-origin:240px 145px;animation:corePulse 2.4s ease-in-out infinite}</style>
+  <defs>
+    <!-- گرادیان‌های بدنه -->
+    <linearGradient id="topSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334161" />
+      <stop offset="100%" stop-color="#192133" />
+    </linearGradient>
+
+    <linearGradient id="innerDeck" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#111726" />
+      <stop offset="100%" stop-color="#1f2940" />
+    </linearGradient>
+
+    <linearGradient id="leftFace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e273b" />
+      <stop offset="100%" stop-color="#101622" />
+    </linearGradient>
+
+    <linearGradient id="rightFace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#151b2b" />
+      <stop offset="100%" stop-color="#0a0e17" />
+    </linearGradient>
+
+    <!-- فیلترهای نئون -->
+    <filter id="glowCyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="glowYellow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="glowGreen" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- بدنه اصلی دستگاه مسیریاب -->
+  <g>
+    <!-- پایه پایین (کف دستگاه) -->
+    <path d="M 85 165 L 85 195 Q 85 208 100 216 L 222 284 Q 240 294 258 284 L 380 216 Q 395 208 395 195 L 395 165 Z" fill="url(#leftFace)" />
+    <path d="M 240 245 L 240 289 Q 249 289 258 284 L 380 216 Q 395 208 395 195 L 395 165 L 240 245 Z" fill="url(#rightFace)" />
+
+    <!-- خط نورانی دور پایه -->
+    <path d="M 92 192 L 224 266 Q 240 274 256 266 L 388 192" fill="none" stroke="#48cae4" stroke-width="2" opacity="0.5" />
+
+    <!-- سطح بیرونی لوزی بالا -->
+    <path d="M 222 62 Q 240 52 258 62 L 382 131 Q 400 141 382 151 L 258 220 Q 240 230 222 220 L 98 151 Q 80 141 98 131 Z"
+          fill="url(#topSurface)" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" />
+
+    <!-- فرورفتگی داخلی روی سقف (محفظه هسته) -->
+    <path d="M 228 80 Q 240 73 252 80 L 348 133 Q 360 140 348 147 L 252 200 Q 240 207 228 200 L 132 147 Q 120 140 132 133 Z"
+          fill="url(#innerDeck)" stroke="rgba(86, 240, 255, 0.25)" stroke-width="1.5" />
+
+    <!-- پورت‌های ورودی سمت چپ (جداره جلو-چپ) -->
+    <g filter="url(#glowCyan)">
+      <ellipse cx="112" cy="180" rx="5.5" ry="7.5" transform="rotate(-28 112 180)" fill="#56f0ff" />
+      <ellipse cx="132" cy="191" rx="5.5" ry="7.5" transform="rotate(-28 132 191)" fill="#56f0ff" />
+      <ellipse cx="152" cy="202" rx="5.5" ry="7.5" transform="rotate(-28 152 202)" fill="#56f0ff" />
+    </g>
+    <!-- نوار وضعیت ورودی -->
+    <polygon points="175,213 215,235 215,244 175,222" fill="#56f0ff" opacity="0.85" filter="url(#glowCyan)" />
+
+    <!-- پورت‌های خروجی سمت راست (جداره جلو-راست) -->
+    <g filter="url(#glowYellow)">
+      <ellipse cx="328" cy="202" rx="5.5" ry="7.5" transform="rotate(28 328 202)" fill="#ffb703" />
+      <ellipse cx="348" cy="191" rx="5.5" ry="7.5" transform="rotate(28 348 191)" fill="#00f59b" />
+      <ellipse cx="368" cy="180" rx="5.5" ry="7.5" transform="rotate(28 368 180)" fill="#ffb703" />
+    </g>
+    <!-- نوار وضعیت خروجی -->
+    <polygon points="265,235 305,213 305,222 265,244" fill="#ffb703" opacity="0.85" filter="url(#glowYellow)" />
+  </g>
+
+  <!-- نماد هسته مرکزی و فلش‌های ورودی/خروجی روی سقف -->
+  <g>
+    <!-- حلقه بیضی ایزومتریک مرکزی -->
+    <ellipse class="core-ring" cx="240" cy="140" rx="44" ry="25" fill="none" stroke="#56f0ff" stroke-width="2.5" stroke-dasharray="14 8" filter="url(#glowCyan)" />
+    <ellipse cx="240" cy="140" rx="22" ry="12.5" fill="#18263d" stroke="#ffb703" stroke-width="2" filter="url(#glowYellow)" />
+
+    <!-- فلش ورودی (از چپ به مرکز) -->
+    <g filter="url(#glowCyan)" fill="#56f0ff">
+      <polygon points="158,140 186,125 186,133 206,133 206,147 186,147 186,155" transform="scale(1, 0.65) translate(0, 75)" />
+    </g>
+
+    <!-- فلش خروجی (از مرکز به راست) -->
+    <g filter="url(#glowYellow)" fill="#ffb703">
+      <polygon points="322,140 294,125 294,133 274,133 274,147 294,147 294,155" transform="scale(1, 0.65) translate(0, 75)" />
+    </g>
+
+    <!-- نقطه مرکزی هسته -->
+    <ellipse cx="240" cy="140" rx="8" ry="4.5" fill="#00f59b" filter="url(#glowGreen)" />
+  </g>
+</svg>
