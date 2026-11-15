@@ -220,6 +220,16 @@ install -o root -g root -m 0644 "$ROOT/web/assets/"* /opt/tunnelmgr/web/assets/
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc/systemd/system/tunnelmgr.service
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service
 install -d -o tunnelmgr -g tunnelmgr -m 0700 /var/lib/tunnelmgr
+install -d -o root -g tunnelmgr -m 0750 /etc/tunnelmgr/panel-tls
+if [ ! -s /etc/tunnelmgr/panel-tls/fullchain.pem ] || [ ! -s /etc/tunnelmgr/panel-tls/privkey.pem ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -keyout /etc/tunnelmgr/panel-tls/privkey.pem \
+        -out /etc/tunnelmgr/panel-tls/fullchain.pem \
+        -subj '/CN=avaTUN panel' \
+        -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
+    chown root:tunnelmgr /etc/tunnelmgr/panel-tls/privkey.pem /etc/tunnelmgr/panel-tls/fullchain.pem
+    chmod 0640 /etc/tunnelmgr/panel-tls/privkey.pem /etc/tunnelmgr/panel-tls/fullchain.pem
+fi
 # The API process reads only the TLS redirect metadata from this private state
 # directory. Keep the file group-readable by tunnelmgr so HTTP redirects work.
 if [ -f /var/lib/tunnelmgr/panel-tls-status.json ]; then
