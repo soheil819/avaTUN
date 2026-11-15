@@ -125,6 +125,12 @@ resources, tunnel start/stop/rebuild, forward management, activity, and
 administrator update controls. Only Telegram IDs in `admins` or `viewers` can
 authenticate, and the role is rechecked on every request.
 
+Tunnel pages show cumulative RX/TX bytes from the tunnel interface. HAProxy
+forward pages show cumulative bytes received and sent by each managed listener
+port. Counters are live kernel/HAProxy counters and may reset when a tunnel
+interface or HAProxy process is recreated; unavailable transports are marked
+explicitly instead of being estimated.
+
 Run the regression checks with `python3 scripts/check-telegram.py`.
 
 ### HTML widget delivery

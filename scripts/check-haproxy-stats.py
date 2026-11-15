@@ -46,6 +46,14 @@ class StatsChecks(unittest.TestCase):
         for original in ('frontend haproxy_stats\n  bind :9999\n',stats.BEGIN+'\nunfinished'):
             with self.assertRaises(ValueError):stats.append_block(original)
 
+    def test_parses_per_port_byte_counters_and_backend_health(self):
+        csv_data=b'# pxname,svname,bin,bout,status\n' \
+                 b'tm_fwd_web,FRONTEND,12345,67890,OPEN\n' \
+                 b'tm_pool_web,path1_core,0,0,UP\n'
+        paths,traffic=privd.parse_haproxy_stats(csv_data)
+        self.assertEqual({'core':'UP'},paths['web'])
+        self.assertEqual({'state':'ok','rx_bytes':12345,'tx_bytes':67890,'total_bytes':80235},traffic['web'])
+
     def test_statistics_remain_available_with_no_forwarding_rules(self):
         cfg=self.root/'haproxy.cfg';cfg.write_text('global\n  daemon\n')
         path=lambda value:cfg if str(value)=='/etc/haproxy/haproxy.cfg' else pathlib.Path(value)

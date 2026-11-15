@@ -5,7 +5,7 @@ from network import verify_tunnel_link, remove_managed_link
 import tomllib
 import tempfile
 from haproxy_stats import append_block as append_stats, without_block as without_stats, settings as stats_settings, PORT as STATS_PORT
-import ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
+import base64, ipaddress, json, os, pwd, re, shutil, socket, struct, subprocess, time, sqlite3, csv, secrets
 from pathlib import Path
 SOCKET='/run/tunnelmgr/privd.sock'
 ID=re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
@@ -187,12 +187,37 @@ def preserve_backhaul_secret(ident):
         finally:pending.unlink(missing_ok=True)
     return {'ok':True,'secret_file':str(path)}
 
+def parse_haproxy_stats(data):
+    """Return backend health and per-listener byte counters from HAProxy CSV."""
+    lines=data.decode(errors='replace').splitlines()
+    if not lines:return {},{}
+    header=lines[0].lstrip('# ').split(',')
+    indexes={name:index for index,name in enumerate(header)}
+    paths={};traffic={}
+    rows=csv.reader(lines[1:])
+    for row in rows:
+        if len(row)<=max(indexes.get('pxname',0),indexes.get('svname',1)):continue
+        px=row[indexes['pxname']];sv=row[indexes['svname']]
+        if px.startswith('tm_pool_') and sv not in ('BACKEND','FRONTEND'):
+            match=re.fullmatch(r'path[0-9]+_(.+)',sv)
+            if match:
+                status_index=indexes.get('status',17)
+                paths.setdefault(px[8:],{})[match[1]]=row[status_index] if status_index<len(row) else 'UNKNOWN'
+        if px.startswith('tm_fwd_') and sv=='FRONTEND':
+            def counter(name):
+                try:return max(0,int(row[indexes[name]] or 0))
+                except (KeyError,ValueError,IndexError):return 0
+            received=counter('bin');sent=counter('bout')
+            traffic[px[7:]]={'state':'ok','rx_bytes':received,'tx_bytes':sent,'total_bytes':received+sent}
+    return paths,traffic
+
 def haproxy_apply(req):
     action=req.get('action','status')
     if action=='status':
         p=subprocess.run(['/usr/bin/systemctl','is-active','haproxy.service'],capture_output=True,text=True,timeout=8)
-        active=p.stdout.strip()=='active';paths={}
+        active=p.stdout.strip()=='active';paths={};traffic={}
         if active:
+            data=b''
             try:
                 client=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);client.settimeout(1.5);client.connect('/run/haproxy/admin.sock');client.sendall(b'show stat\n');data=b''
                 while len(data)<2_000_000:
@@ -200,13 +225,25 @@ def haproxy_apply(req):
                     if not chunk:break
                     data+=chunk
                     if data.endswith(b'\n\n'):break
-                client.close();rows=list(csv.reader(data.decode(errors='replace').splitlines()))
-                for row in rows[1:]:
-                    if len(row)<18 or not row[0].startswith('tm_pool_') or row[1] in ('BACKEND','FRONTEND'):continue
-                    match=re.fullmatch(r'path[0-9]+_(.+)',row[1])
-                    if match:paths.setdefault(row[0][8:],{})[match[1]]=row[17]
-            except Exception:paths={}
-        return {'ok':p.returncode==0,'active':active,'status':p.stdout.strip() or p.stderr.strip(),'paths':paths}
+                client.close()
+            except Exception:
+                data=b''
+            if not data and Path('/etc/avatun/haproxy-stats.json').is_file():
+                try:
+                    auth=stats_settings();token=base64.b64encode((auth['username']+':'+auth['password']).encode()).decode()
+                    client=socket.create_connection(('127.0.0.1',STATS_PORT),timeout=1.5)
+                    client.sendall(('GET /stats;csv HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic '+token+'\r\nConnection: close\r\n\r\n').encode())
+                    while len(data)<2_000_000:
+                        chunk=client.recv(65536)
+                        if not chunk:break
+                        data+=chunk
+                    client.close();data=data.split(b'\r\n\r\n',1)[1] if b'\r\n\r\n' in data else b''
+                except Exception:data=b''
+            if data:
+                try:
+                    paths,traffic=parse_haproxy_stats(data)
+                except Exception:paths,traffic={},{}
+        return {'ok':p.returncode==0,'active':active,'status':p.stdout.strip() or p.stderr.strip(),'paths':paths,'traffic':traffic}
     if action=='ensure-stats':
         cfg=Path('/etc/haproxy/haproxy.cfg')
         if not cfg.is_file():raise ValueError('HAProxy configuration file is missing')

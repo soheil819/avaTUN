@@ -777,15 +777,15 @@ class Bot(ResourceMixin, ConsoleMixin):
             entries=sorted((k,v) for k,v in groups.items() if server_id=='all' or server_id in v)
             visible=pages(entries,page_index,'تونل‌ها')
             for ident,endpoints in visible:
-                values=list(endpoints.values());ts=tunnel_state(endpoints);kinds=sorted({str(x.get('metadata',{}).get('transport') or x.get('kind') or 'تونل') for x in values});ips=[x.get('health',{}).get('interface_local_ip') or x.get('metadata',{}).get('tun_local') or '—' for x in values];rtts=[x.get('health',{}).get('rtt_ms') for x in values if x.get('health',{}).get('rtt_ms') is not None]
-                state['rows'].append(row(ident,[(' + '.join(kinds))[:100],' ↔ '.join(str(x.get('server_id') or 'local') for x in values)[:100],'IP '+ ' ⇄ '.join(str(x) for x in ips)[:100]+' · پینگ '+(f'{max(rtts):.1f} ms' if rtts else '—')],ts,{'up':'برقرار','down':'قطع','unknown':'نامشخص'}[ts],f'open:tunnel:{ident}'))
+                values=list(endpoints.values());ts=tunnel_state(endpoints);kinds=sorted({str(x.get('metadata',{}).get('transport') or x.get('kind') or 'تونل') for x in values});ips=[x.get('health',{}).get('interface_local_ip') or x.get('metadata',{}).get('tun_local') or '—' for x in values];rtts=[x.get('health',{}).get('rtt_ms') for x in values if x.get('health',{}).get('rtt_ms') is not None];traffic=[x.get('traffic',{}) for x in values if x.get('traffic',{}).get('state')=='ok'];volume=max((int(x.get('total_bytes',0)) for x in traffic),default=None)
+                state['rows'].append(row(ident,[(' + '.join(kinds))[:100],' ↔ '.join(str(x.get('server_id') or 'local') for x in values)[:100],'IP '+ ' ⇄ '.join(str(x) for x in ips)[:100]+' · پینگ '+(f'{max(rtts):.1f} ms' if rtts else '—'),f'حجم تبادل {size(volume) if volume is not None else "—"} · مجموع شمارندهٔ یک سمت'],ts,{'up':'برقرار','down':'قطع','unknown':'نامشخص'}[ts],f'open:tunnel:{ident}'))
         elif page == 'tunnel':
             endpoints=groups.get(selected)
             if not endpoints:raise PanelError('تونل انتخاب‌شده پیدا نشد.')
             state.update({'title':'تونل '+selected,'summary':f'{len(endpoints)} سمت','rows':[]})
             for sid,item in endpoints.items():
-                meta=item.get('metadata',{});health=item.get('health',{});live=item.get('live',{});ts=health.get('state','unknown');ip=health.get('interface_local_ip') or meta.get('tun_local') or '—';peer=health.get('interface_peer_ip') or meta.get('tun_remote') or '—'
-                state['rows'].append(row(sid,[str(meta.get('transport') or item.get('kind') or 'تونل'),f'IP داخلی {ip} ⇄ {peer}',f'پینگ {health.get("rtt_ms","—")} ms · MTU {meta.get("mtu") or meta.get("tun_mtu") or "—"}'+(' · سرویس خاموش' if live.get('active') is False else '')],ts,{'up':'برقرار','down':'قطع','error':'خطا','monitor-only':'پایش محدود'}.get(ts,'نامشخص')))
+                meta=item.get('metadata',{});health=item.get('health',{});live=item.get('live',{});traffic=item.get('traffic',{});ts=health.get('state','unknown');ip=health.get('interface_local_ip') or meta.get('tun_local') or '—';peer=health.get('interface_peer_ip') or meta.get('tun_remote') or '—';volume=f'حجم کل {size(traffic.get("total_bytes"))} · ↓ {size(traffic.get("rx_bytes"))} · ↑ {size(traffic.get("tx_bytes"))}' if traffic.get('state')=='ok' else 'حجم تبادل در دسترس نیست'
+                state['rows'].append(row(sid,[str(meta.get('transport') or item.get('kind') or 'تونل'),f'IP داخلی {ip} ⇄ {peer}',f'پینگ {health.get("rtt_ms","—")} ms · MTU {meta.get("mtu") or meta.get("tun_mtu") or "—"}',volume+(' · سرویس خاموش' if live.get('active') is False else '')],ts,{'up':'برقرار','down':'قطع','error':'خطا','monitor-only':'پایش محدود'}.get(ts,'نامشخص')))
             state['actions']=[{'label':'بررسی دوباره','query':f'refresh:tunnel:0:local:{selected}'}]
             if role=='admin' and len(endpoints)>=2:
                 state['actions'] += [{'label':label,'query':f'confirm:{op}:{selected}'} for label,op in (('▶ شروع','start'),('↻ راه‌اندازی مجدد','restart'),('⏸ توقف','stop'))]
@@ -802,14 +802,16 @@ class Bot(ResourceMixin, ConsoleMixin):
             visible=pages(entries,page_index,'فورواردر · '+server_id);service=result.get('service') or {}
             state.update({'summary':'HAProxy '+('فعال' if service.get('active') else 'خاموش/نامشخص'),'server_id':server_id})
             for rule in visible:
-                state['rows'].append(row(rule.get('id'),[f'{rule.get("listen_ip")}:{rule.get("listen_port")} → پورت {rule.get("backend_port")}',f'{len(rule.get("backends",[]))} مسیر · {rule.get("algorithm","leastconn")}'], 'up' if rule.get('enabled',True) else 'unknown','فعال' if rule.get('enabled',True) else 'متوقف',f'open:forward:{server_id}:{rule.get("id")}'))
+                traffic=rule.get('traffic',{});volume=f'حجم پورت · ↓ {size(traffic.get("rx_bytes"))} · ↑ {size(traffic.get("tx_bytes"))} · مجموع {size(traffic.get("total_bytes"))}' if traffic.get('state')=='ok' else 'حجم پورت در دسترس نیست'
+                state['rows'].append(row(rule.get('id'),[f'{rule.get("listen_ip")}:{rule.get("listen_port")} → پورت {rule.get("backend_port")}',f'{len(rule.get("backends",[]))} مسیر · {rule.get("algorithm","leastconn")}',volume], 'up' if rule.get('enabled',True) else 'unknown','فعال' if rule.get('enabled',True) else 'متوقف',f'open:forward:{server_id}:{rule.get("id")}'))
             state['actions']=[{'label':str(x.get('id'))[:18],'query':'server:'+str(x.get('id'))} for x in servers[:4]]
             state['actions'].append({'label':'＋ قانون جدید','query':'forward-new:'+server_id})
         elif page == 'forward':
             if role!='admin':raise PanelError('مدیریت فورواردر فقط برای مدیر فعال است.')
             result=self.panel.request('/api/v1/forwards?server_id='+urllib.parse.quote(server_id,safe=''));rule=next((x for x in result.get('items',[]) if x.get('id')==selected and x.get('server_id','local')==server_id),None)
             if not rule:raise PanelError('قانون فورواردر پیدا نشد.')
-            state.update({'title':'فورواردر '+selected,'summary':server_id,'rows':[row('ورودی',[f'{rule.get("listen_ip")}:{rule.get("listen_port")}',f'مقصد پورت {rule.get("backend_port")} · {rule.get("algorithm","leastconn")}',', '.join(x.get('tunnel_id','') for x in rule.get('backends',[])) or 'مسیر ثبت نشده'],'up' if rule.get('enabled',True) else 'unknown','فعال' if rule.get('enabled',True) else 'متوقف')],
+            traffic=rule.get('traffic',{});volume=f'حجم پورت · ↓ {size(traffic.get("rx_bytes"))} · ↑ {size(traffic.get("tx_bytes"))} · مجموع {size(traffic.get("total_bytes"))}' if traffic.get('state')=='ok' else 'حجم پورت در دسترس نیست'
+            state.update({'title':'فورواردر '+selected,'summary':server_id,'rows':[row('ورودی',[f'{rule.get("listen_ip")}:{rule.get("listen_port")}',f'مقصد پورت {rule.get("backend_port")} · {rule.get("algorithm","leastconn")}',', '.join(x.get('tunnel_id','') for x in rule.get('backends',[])) or 'مسیر ثبت نشده',volume],'up' if rule.get('enabled',True) else 'unknown','فعال' if rule.get('enabled',True) else 'متوقف')],
                           'actions':[{'label':'ویرایش','query':'edit-forward:'+selected},
                                      {'label':'فعال/توقف','query':'cf:toggle:'+selected},
                                      {'label':'حذف قانون','query':'cf:delete:'+selected},
