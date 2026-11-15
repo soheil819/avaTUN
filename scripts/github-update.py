@@ -24,16 +24,16 @@ RAW = f'https://raw.githubusercontent.com/{OWNER}/{REPOSITORY}'
 STATUS = pathlib.Path('/var/lib/tunnelmgr/github-update.json')
 INSTALLED_APP = pathlib.Path('/opt/tunnelmgr/tunnelmgr/tunnelctl.py')
 USER_AGENT = 'avaTUN-update-checker'
-VERSION_RE = re.compile(r'^APP_VERSION\s*=\s*[\'\"](\d+\.\d+\.\d+)[\'\"]', re.M)
+VERSION_RE = re.compile(r'^APP_VERSION\s*=\s*[\'\"](\d+(?:\.\d+){2,3})[\'\"]', re.M)
 SIGNER_WORKFLOW = f'{OWNER}/{REPOSITORY}/.github/workflows/release-assets.yml'
 MIN_GH_VERSION = (2, 102, 0)
 
 
 def version_tuple(value):
-    match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)', str(value))
+    match = re.fullmatch(r'(\d+(?:\.\d+){2,3})', str(value))
     if not match:
         raise ValueError('Invalid avaTUN version string.')
-    return tuple(int(part) for part in match.groups())
+    return tuple(int(part) for part in match.group(1).split('.'))
 
 
 def request(url, accept='application/vnd.github+json', timeout=20):

@@ -1,8 +1,8 @@
 # avaTUN | tunnel manager web panel
 
-**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. این پروژه در مرحلهٔ بتا است.**
+**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 1.0.0.1.**
 
-avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید. امکانات در مرحلهٔ بتا هستند؛ پیش از استفادهٔ عملیاتی، روی محیط آزمایشی بررسی کنید.
+avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید.
 
 ## نصب سریع
 
@@ -16,11 +16,11 @@ sudo bash scripts/install-from-github.sh
 
 اسکریپت آغاز نصب، فایل ریلیز را تا پیش از تأیید attestation امضاشدهٔ GitHub Actions اجرا نمی‌کند. سپس پیش‌نیازها را نصب می‌کند و نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
-**بتا:** avaTUN هنوز در حال توسعه است. ابتدا روی سرور آزمایشی نصب کنید و برای دسترسی امن از HTTPS استفاده کنید.
+نسخهٔ پایدار avaTUN 1.0.0.1 است. برای دسترسی امن، HTTPS پنل را از تنظیمات فعال کنید.
 
 ### English
 
-avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI and `python3-snappy`, clone the repository, and run its bootstrap script. It downloads the latest stable release through GitHub's public API and verifies its GitHub Actions attestation offline before running the release installer:
+avaTUN is a stable Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI and `python3-snappy`, clone the repository, and run its bootstrap script. It downloads the latest stable release through GitHub's public API and verifies its GitHub Actions attestation offline before running the release installer:
 
 ```sh
 git clone https://github.com/soheil819/avaTUN.git
