@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.47"
+APP_VERSION="0.2.48"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -120,7 +120,7 @@ def _totp(secret,step):
     digest=hmac.new(key,struct.pack('>Q',step),hashlib.sha1).digest();offset=digest[-1]&15
     return f'{(struct.unpack("!I",digest[offset:offset+4])[0]&0x7fffffff)%1000000:06d}'
 
-def _totp_match(secret,code,now=None,last_step=-1):
+def _totp_match(secret,code,last_step=-1,*,now=None):
     raw=str(code).strip()
     if any(not (ch.isdecimal() or ch in ' -') for ch in raw):return None
     digits=''.join(str(unicodedata.digit(ch)) for ch in raw if ch.isdecimal())
