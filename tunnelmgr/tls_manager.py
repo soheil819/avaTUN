@@ -9,18 +9,20 @@ CERT_DIR=Path('/etc/tunnelmgr/panel-tls')
 WEBHOOK_CONFIG=Path('/etc/avatun/telegram-webhook.json')
 LIVE=Path('/etc/letsencrypt/live')
 
-def write_json(path,value,mode=0o600):
+def write_json(path,value,mode=0o600,gid=None):
     path.parent.mkdir(parents=True,exist_ok=True)
     fd,tmp=tempfile.mkstemp(prefix='.avatun-',dir=path.parent)
     try:
         os.fchmod(fd,mode)
+        if gid is not None:os.fchown(fd,0,gid)
         with os.fdopen(fd,'w') as f:json.dump(value,f,ensure_ascii=False);f.flush();os.fsync(f.fileno())
         os.replace(tmp,path)
     finally:
         if os.path.exists(tmp):os.unlink(tmp)
 
 def status(state,step,message,**extra):
-    write_json(STATUS,{'state':state,'step':step,'message':message,'updated_at':int(time.time()),**extra})
+    gid=grp.getgrnam('tunnelmgr').gr_gid
+    write_json(STATUS,{'state':state,'step':step,'message':message,'updated_at':int(time.time()),**extra},0o640,gid)
 
 def safe_config():
     cfg=json.loads(REQUEST.read_text())
@@ -76,7 +78,7 @@ def apply():
         run(['/usr/bin/systemctl','daemon-reload'],20)
     expiry=run(['/usr/bin/openssl','x509','-enddate','-noout','-in',str(CERT_DIR/'fullchain.pem')]).partition('=')[2]
     result={'state':'ready','step':'complete','message':'گواهی نصب شد؛ ورود و درخواست‌های پنل با HTTPS انجام می‌شوند و HTTP به HTTPS هدایت می‌شود.','domain':domain,'email':email,'port':port,'certificate_name':cert_name,'certificate_expires':expiry,'updated_at':int(time.time())}
-    write_json(STATUS,result)
+    write_json(STATUS,result,0o640,group)
     write_json(WEBHOOK_CONFIG,{'state':'ready','domain':domain,'cert':str(CERT_DIR/'fullchain.pem'),'key':str(CERT_DIR/'privkey.pem'),'updated_at':int(time.time())},0o640)
     os.chown(WEBHOOK_CONFIG,0,group)
     if old_port!=port:

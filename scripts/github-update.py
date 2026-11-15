@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check and install verified avaTUN updates from the project GitHub branch."""
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -36,7 +37,10 @@ def version_tuple(value):
 
 
 def request(url, accept='application/vnd.github+json', timeout=20):
-    req = urllib.request.Request(url, headers={'Accept': accept, 'User-Agent': USER_AGENT})
+    headers={'Accept': accept, 'User-Agent': USER_AGENT}
+    if urllib.parse.urlsplit(url).hostname=='api.github.com':
+        headers['X-GitHub-Api-Version']='2026-03-10'
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
@@ -91,10 +95,35 @@ def verify_release_archive(archive, version):
     match = re.search(r'gh version (\d+)\.(\d+)\.(\d+)', version_text.stdout)
     if not match or tuple(map(int, match.groups())) < MIN_GH_VERSION:
         raise RuntimeError('GitHub CLI 2.102.0 or newer is required to verify release attestations.')
+    digest=hashlib.sha256()
+    with archive.open('rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
+    metadata=json.loads(request(f'{API}/attestations/sha256:{digest.hexdigest()}'))
+    entries=metadata.get('attestations',[])
+    if not isinstance(entries,list) or not entries:
+        raise RuntimeError('GitHub returned no attestations for the release archive.')
+    bundles=[]
+    for entry in entries:
+        bundle=entry.get('bundle')
+        if bundle is None and entry.get('bundle_url'):
+            parsed=urllib.parse.urlsplit(entry['bundle_url'])
+            if parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.blob.core.windows.net') or parsed.username or parsed.password:
+                raise RuntimeError('GitHub returned an invalid attestation bundle URL.')
+            try:
+                import snappy
+                bundle=json.loads(snappy.uncompress(request(entry['bundle_url'],'application/octet-stream',60)))
+            except Exception as error:
+                raise RuntimeError('Could not download or decompress the GitHub attestation bundle.') from error
+        if isinstance(bundle,dict):bundles.append(json.dumps(bundle,separators=(',',':')))
+    if not bundles:
+        raise RuntimeError('GitHub returned no usable release attestation bundles.')
+    bundle_path=archive.with_name(archive.name+'.attestations.jsonl')
+    bundle_path.write_text('\n'.join(bundles)+'\n')
     result = subprocess.run([gh, 'attestation', 'verify', str(archive), '--repo',
                              f'{OWNER}/{REPOSITORY}', '--signer-workflow', SIGNER_WORKFLOW,
-                             '--source-ref', f'refs/tags/{version}'],
+                             '--source-ref', f'refs/tags/{version}', '--bundle',str(bundle_path)],
                             capture_output=True, text=True, timeout=180)
+    bundle_path.unlink(missing_ok=True)
     if result.returncode:
         detail=(result.stderr or result.stdout or 'GitHub artifact attestation verification failed.')[-900:]
         raise RuntimeError('Release attestation verification failed: '+detail)

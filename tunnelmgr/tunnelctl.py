@@ -2139,7 +2139,10 @@ def server(host,port):
             if self.is_secure():return True
             try:
                 peer=ipaddress.ip_address(self.client_address[0])
-                if peer.is_loopback and self.path.split('?',1)[0]=='/health':return True
+                # Local services (including the Telegram bot) call the panel
+                # over loopback. SSH port forwards also terminate here, with
+                # SSH providing transport encryption for the browser session.
+                if peer.is_loopback:return True
                 tls=json.loads(pathlib.Path('/var/lib/tunnelmgr/panel-tls-status.json').read_text())
                 domain=tls.get('domain','');port=int(tls.get('port',0))
                 cert=pathlib.Path('/etc/tunnelmgr/panel-tls/fullchain.pem');key=pathlib.Path('/etc/tunnelmgr/panel-tls/privkey.pem')

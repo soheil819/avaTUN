@@ -6,36 +6,26 @@ avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس �
 
 ## نصب سریع
 
-روی Debian یا Ubuntu، ابتدا [GitHub CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) را نصب کنید. سپس آخرین ریلیز پایدار را دریافت و attestation آن را پیش از اجرای نصب‌کننده با نام مخزن و workflow بررسی کنید:
+روی Debian یا Ubuntu، ابتدا [GitHub CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) و `python3-snappy` را نصب کنید. سپس مخزن را دریافت و اسکریپت آغاز نصب را اجرا کنید؛ اسکریپت آخرین ریلیز پایدار را از API عمومی GitHub می‌گیرد و attestation آن را به‌صورت آفلاین بررسی می‌کند:
 
 ```sh
-TAG="$(gh release list --repo soheil819/avaTUN --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName')"
-WORK="$(mktemp -d)"
-gh release download "$TAG" --repo soheil819/avaTUN --pattern "avaTUN-${TAG}.tar.gz" --dir "$WORK"
-gh attestation verify "$WORK/avaTUN-${TAG}.tar.gz" --repo soheil819/avaTUN \
-  --signer-workflow soheil819/avaTUN/.github/workflows/release-assets.yml \
-  --source-ref "refs/tags/$TAG"
-tar -xzf "$WORK/avaTUN-${TAG}.tar.gz" --strip-components=1 -C "$WORK"
-sudo bash "$WORK/install.sh"
+git clone https://github.com/soheil819/avaTUN.git
+cd avaTUN
+sudo bash scripts/install-from-github.sh
 ```
 
-نصب‌کنندهٔ امضانشده از شاخهٔ متغیر `main` اجرا نمی‌شود. پس از تأیید امضای GitHub Actions، نصب‌کننده پیش‌نیازها را نصب می‌کند و در پایان نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
+اسکریپت آغاز نصب، فایل ریلیز را تا پیش از تأیید attestation امضاشدهٔ GitHub Actions اجرا نمی‌کند. سپس پیش‌نیازها را نصب می‌کند و نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
 **بتا:** avaTUN هنوز در حال توسعه است. ابتدا روی سرور آزمایشی نصب کنید و برای دسترسی امن از HTTPS استفاده کنید.
 
 ### English
 
-avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI, then download the latest stable release and verify its GitHub Actions attestation before running the installer:
+avaTUN is a **beta** Linux tunnel and server management dashboard with a Mesh map, live resource monitoring, HAProxy TCP forwarding, and an optional Telegram bot. Install GitHub CLI and `python3-snappy`, clone the repository, and run its bootstrap script. It downloads the latest stable release through GitHub's public API and verifies its GitHub Actions attestation offline before running the release installer:
 
 ```sh
-TAG="$(gh release list --repo soheil819/avaTUN --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName')"
-WORK="$(mktemp -d)"
-gh release download "$TAG" --repo soheil819/avaTUN --pattern "avaTUN-${TAG}.tar.gz" --dir "$WORK"
-gh attestation verify "$WORK/avaTUN-${TAG}.tar.gz" --repo soheil819/avaTUN \
-  --signer-workflow soheil819/avaTUN/.github/workflows/release-assets.yml \
-  --source-ref "refs/tags/$TAG"
-tar -xzf "$WORK/avaTUN-${TAG}.tar.gz" --strip-components=1 -C "$WORK"
-sudo bash "$WORK/install.sh"
+git clone https://github.com/soheil819/avaTUN.git
+cd avaTUN
+sudo bash scripts/install-from-github.sh
 ```
 
 The installer prints the panel URL and initial login credentials in the terminal. Test on non-production servers before operational use.

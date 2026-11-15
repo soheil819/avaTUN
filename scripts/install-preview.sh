@@ -121,6 +121,8 @@ GH_VERSION=$(gh --version 2>/dev/null | sed -n '1s/^gh version \([0-9.]*\).*/\1/
 if ! python3 -c 'import sys; p=tuple(map(int,sys.argv[1].split("."))); sys.exit(p < (2,102,0))' "$GH_VERSION" 2>/dev/null; then PACKAGES="$PACKAGES gh"; fi
 PYTHON_CRYPTO_STATUS=$(dpkg-query -W -f='${Status}' python3-cryptography 2>/dev/null || true)
 case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-cryptography" ;; esac
+PYTHON_SNAPPY_STATUS=$(dpkg-query -W -f='${Status}' python3-snappy 2>/dev/null || true)
+case "$PYTHON_SNAPPY_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-snappy" ;; esac
 if [ -n "$PACKAGES" ]; then
     command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
@@ -216,6 +218,12 @@ install -o root -g root -m 0644 "$ROOT/web/assets/"* /opt/tunnelmgr/web/assets/
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc/systemd/system/tunnelmgr.service
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service
 install -d -o tunnelmgr -g tunnelmgr -m 0700 /var/lib/tunnelmgr
+# The API process reads only the TLS redirect metadata from this private state
+# directory. Keep the file group-readable by tunnelmgr so HTTP redirects work.
+if [ -f /var/lib/tunnelmgr/panel-tls-status.json ]; then
+    chown root:tunnelmgr /var/lib/tunnelmgr/panel-tls-status.json
+    chmod 0640 /var/lib/tunnelmgr/panel-tls-status.json
+fi
 install -d -o root -g root -m 0700 /etc/tunnelmgr/network
 # Paths listed in tunnelmgr-privd.service ReadWritePaths must exist before systemd starts it.
 install -d -o root -g root -m 0755 /etc/backhaul /var/lib/backhaul-manager /etc/swanctl/conf.d
