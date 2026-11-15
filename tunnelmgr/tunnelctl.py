@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.37"
+APP_VERSION="0.2.38"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2123,6 +2123,7 @@ def server(host,port):
             if route=="/api/v1/proxy-forwards":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 server_id=parse_qs(request.query).get('server_id',['local'])[0]
+                if server_id=='all':return self.send(200,{'items':proxy_forward_rows(),'service':None})
                 if server_id!='local' and not ID.fullmatch(server_id):return self.send(400,{'error':'invalid server id'})
                 service=privileged({'op':'xray-config','id':'xray','action':'status'}) if server_id=='local' else None
                 if server_id!='local':
