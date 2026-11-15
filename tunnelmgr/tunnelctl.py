@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.45"
+APP_VERSION="0.2.46"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -117,9 +117,12 @@ def _totp_match(secret,code,now=None,last_step=-1):
     digits=''.join(str(unicodedata.digit(ch)) for ch in raw if ch.isdecimal())
     if len(digits)!=6:return None
     step=int((time.time() if now is None else now)//30)
+    replayed=False
     for candidate in (step,step-1,step+1):
-        if candidate>last_step and hmac.compare_digest(_totp(secret,candidate),digits):return candidate
-    return None
+        if hmac.compare_digest(_totp(secret,candidate),digits):
+            if candidate>last_step:return candidate
+            replayed=True
+    return 'replay' if replayed else None
 
 def _recovery_codes(count=10):
     codes=[]
@@ -2305,17 +2308,18 @@ def server(host,port):
                 try:
                     if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای ورود دومرحله‌ای باید پنل را با HTTPS باز کنی.'})
                     data=self.body();challenge=data.get('challenge','');pending=PENDING_LOGINS.get(challenge)
-                    if not pending or pending['expires']<time.time():PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'درخواست ورود منقضی شده؛ دوباره وارد شو.'})
+                    if not pending or pending['expires']<time.time():PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'درخواست ورود منقضی شده؛ دوباره وارد شو.','restart_login':True})
                     pending['attempts']+=1
                     if pending['attempts']>5:PENDING_LOGINS.pop(challenge,None);return self.send(429,{'error':'تعداد تلاش‌ها زیاد شد؛ دوباره وارد شو.'})
                     with db() as c:
                         c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT role,totp_secret,totp_enabled,totp_last_step,recovery_codes FROM accounts WHERE name=?',(pending['name'],)).fetchone()
-                        if not row or not row['totp_enabled']:PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'احراز هویت دومرحله‌ای در این حساب فعال نیست.'})
+                        if not row or not row['totp_enabled']:PENDING_LOGINS.pop(challenge,None);return self.send(401,{'error':'احراز هویت دومرحله‌ای در این حساب فعال نیست.','restart_login':True})
                         last_step=row['totp_last_step'];secret=_mfa_open(row['totp_secret']);matched=_totp_match(secret,data.get('code',''),last_step)
+                        if matched=='replay':return self.send(401,{'error':'این کد قبلاً استفاده شده؛ صبر کن کد برنامه عوض شود و کد تازه را وارد کن.'})
                         if matched is not None:c.execute('UPDATE accounts SET totp_last_step=? WHERE name=?',(matched,pending['name']))
                         else:
                             codes=json.loads(row['recovery_codes'] or '[]');remaining=_recovery_consume(codes,data.get('code',''))
-                            if remaining is None:return self.send(401,{'error':'کد نادرست است یا قبلاً استفاده شده.'})
+                            if remaining is None:return self.send(401,{'error':'کد برنامه نادرست است؛ کد تازه را وارد کن یا از کد بازیابی استفاده کن.'})
                             c.execute('UPDATE accounts SET recovery_codes=? WHERE name=?',(json.dumps(remaining),pending['name']))
                     PENDING_LOGINS.pop(challenge,None);session=_new_session(pending['name'],pending['role'],True)
                     self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.session_cookie(session)
@@ -2358,6 +2362,7 @@ def server(host,port):
                         if action=='verify-session':
                             if not row['totp_enabled']:raise ValueError('ورود دومرحله‌ای برای این حساب فعال نیست.')
                             secret=_mfa_open(row['totp_secret']);matched=_totp_match(secret,data.get('code',''),row['totp_last_step'])
+                            if matched=='replay':raise ValueError('این کد قبلاً استفاده شده؛ کد تازه یا کد بازیابی را وارد کن.')
                             if matched is not None:c.execute('UPDATE accounts SET totp_last_step=? WHERE name=?',(matched,name))
                             else:
                                 codes=json.loads(row['recovery_codes'] or '[]');remaining=_recovery_consume(codes,data.get('code',''))
@@ -2371,6 +2376,7 @@ def server(host,port):
                         if action=='rotate-recovery':
                             if not row['totp_enabled']:raise ValueError('ورود دومرحله‌ای برای این حساب فعال نیست.')
                             matched=_totp_match(_mfa_open(row['totp_secret']),data.get('code',''),row['totp_last_step'])
+                            if matched=='replay':raise ValueError('این کد قبلاً استفاده شده؛ کد تازه را وارد کن.')
                             if matched is None:raise ValueError('کد برنامه درست نیست یا قبلاً استفاده شده.')
                             plain_codes,hashed_codes=_recovery_codes();c.execute('UPDATE accounts SET totp_last_step=?,recovery_codes=? WHERE name=?',(matched,json.dumps(hashed_codes),name))
                             return self.send(200,{'ok':True,'recovery_codes':plain_codes})
@@ -2378,6 +2384,7 @@ def server(host,port):
                             if row['role']=='admin':raise ValueError('برای مدیر، ورود دومرحله‌ای اجباری است.')
                             if not verify_password(data.get('current_password',''),row['digest']):raise ValueError('گذرواژهٔ فعلی درست نیست.')
                             matched=_totp_match(_mfa_open(row['totp_secret']),data.get('code',''),row['totp_last_step'])
+                            if matched=='replay':raise ValueError('این کد قبلاً استفاده شده؛ کد تازه را وارد کن.')
                             if not row['totp_enabled'] or matched is None:raise ValueError('کد برنامه درست نیست یا قبلاً استفاده شده.')
                             c.execute("UPDATE accounts SET totp_secret='',totp_pending='',totp_pending_at=0,totp_enabled=0,totp_last_step=-1,recovery_codes='[]' WHERE name=?",(name,))
                             session['mfa_verified']=True
