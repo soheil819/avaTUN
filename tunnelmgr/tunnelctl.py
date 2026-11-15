@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from topology import mesh_plan
 
 APP_NAME="avatun"
-APP_VERSION="0.2.44"
+APP_VERSION="0.2.45"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2130,7 +2130,7 @@ def server(host,port):
             if entry['expires']<time.time():SESSIONS.pop(value,None);return None
             with db() as c:account_row=c.execute("SELECT role,totp_enabled FROM accounts WHERE name=?",(entry['name'],)).fetchone()
             if not account_row:SESSIONS.pop(value,None);return None
-            if account_row['role']=='admin' and not account_row['totp_enabled']:return 'mfa_setup'
+            if account_row['role']=='admin' and not account_row['totp_enabled'] and entry['name']!='avatun-telegram':return 'mfa_setup'
             if account_row['totp_enabled'] and not entry.get('mfa_verified'):return 'mfa_verify'
             return account_row['role']
         def session(self):
@@ -2294,10 +2294,11 @@ def server(host,port):
                         if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای ورود دومرحله‌ای باید پنل را با HTTPS باز کنی.'})
                         challenge=secrets.token_urlsafe(32);PENDING_LOGINS[challenge]={'name':name,'role':row['role'],'expires':time.time()+300,'attempts':0}
                         return self.send(200,{'ok':True,'mfa_required':True,'challenge':challenge,'username':name})
-                    session=_new_session(name,row["role"],row['role']!='admin')
+                    service_account=name=='avatun-telegram'
+                    session=_new_session(name,row["role"],row['role']!='admin' or service_account)
                     self.send_response(200);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Cache-Control","no-store")
                     self.session_cookie(session)
-                    role='mfa_setup' if row['role']=='admin' else row['role']
+                    role='mfa_setup' if row['role']=='admin' and not service_account else row['role']
                     payload=json.dumps({"ok":True,"username":name,"role":role,'mfa_setup_required':role=='mfa_setup'},ensure_ascii=False).encode();self.send_header("Content-Length",str(len(payload)));self.end_headers();self.wfile.write(payload);return
                 except Exception as e:return self.send(400,{"error":str(e)})
             if self.path=="/api/v1/auth/mfa/verify":
