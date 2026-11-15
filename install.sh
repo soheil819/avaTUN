@@ -9,8 +9,12 @@ fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ ! -f "$ROOT/tunnelmgr/tunnelctl.py" ] || [ ! -f "$ROOT/scripts/install-preview.sh" ] || \
    [ ! -f "$ROOT/vendor/backhaul/bin/backhaul" ] || [ ! -f "$ROOT/vendor/backhaul/SHA256SUMS" ]; then
-    echo 'Run install.sh from a complete avaTUN source directory.' >&2
-    exit 1
+    command -v curl >/dev/null 2>&1 || { echo 'curl is required for the online installer.' >&2; exit 1; }
+    echo 'No complete source checkout found; starting the verified GitHub release installer...' >&2
+    BOOTSTRAP=$(mktemp)
+    trap 'rm -f "$BOOTSTRAP"' EXIT HUP INT TERM
+    curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/scripts/install-from-github.sh -o "$BOOTSTRAP"
+    exec /bin/bash "$BOOTSTRAP"
 fi
 
 if [ ! -r /etc/os-release ]; then

@@ -5,14 +5,53 @@ REPOSITORY=soheil819/avaTUN
 SIGNER_WORKFLOW=soheil819/avaTUN/.github/workflows/release-assets.yml
 MIN_GH_VERSION=2.102.0
 
-command -v gh >/dev/null 2>&1 || {
-    echo 'Install GitHub CLI from https://github.com/cli/cli/blob/trunk/docs/install_linux.md, then run this installer again.' >&2
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo 'Run as root, for example: curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash' >&2
     exit 1
-}
-python3 -c 'import snappy' 2>/dev/null || {
-    echo 'Install python3-snappy before verifying GitHub release attestations.' >&2
+fi
+
+# The online entry point is intentionally self-bootstrapping. It only installs
+# verification prerequisites; the application is still taken from a published
+# release archive whose GitHub Actions attestation is checked below.
+if [[ ! -r /etc/os-release ]]; then
+    echo 'Could not identify this Linux distribution.' >&2
     exit 1
-}
+fi
+. /etc/os-release
+case "${ID:-}" in
+    debian|ubuntu|linuxmint|pop) ;;
+    *) echo 'The online installer supports Debian and Ubuntu (including compatible derivatives).' >&2; exit 1 ;;
+esac
+command -v apt-get >/dev/null 2>&1 || { echo 'apt-get is required for the online installer.' >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+
+if ! command -v curl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import snappy' 2>/dev/null; then
+    apt-get update
+    apt-get install -y ca-certificates curl python3 python3-snappy
+fi
+
+GH_VERSION=$(gh --version 2>/dev/null | sed -n '1s/^gh version \([0-9.]*\).*/\1/p' || true)
+if ! python3 - "$GH_VERSION" "$MIN_GH_VERSION" <<'PY'
+import sys
+try:
+    actual=tuple(map(int,sys.argv[1].split('.')))
+except (TypeError, ValueError):
+    raise SystemExit(1)
+required=tuple(map(int,sys.argv[2].split('.')))
+raise SystemExit(actual < required)
+PY
+then
+    install -d -m 0755 /etc/apt/keyrings
+    curl --fail --location --silent --show-error \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    chmod 0644 /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n' \
+        "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/github-cli.list
+    apt-get update
+    apt-get install -y gh
+fi
+
 GH_VERSION=$(gh --version | sed -n '1s/^gh version \([0-9.]*\).*/\1/p')
 python3 - "$GH_VERSION" "$MIN_GH_VERSION" <<'PY'
 import sys
