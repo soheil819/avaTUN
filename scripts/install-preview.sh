@@ -192,7 +192,7 @@ done
 chmod 0644 "$modules_file"
 getent passwd tunnelmgr >/dev/null 2>&1 || useradd --system --home-dir /var/lib/tunnelmgr --create-home --shell /usr/sbin/nologin tunnelmgr
 install -d -o root -g root -m 0755 /opt/tunnelmgr/tunnelmgr /opt/tunnelmgr/web /etc/systemd/system
-install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets
+install -d -o root -g root -m 0755 /opt/tunnelmgr/web/assets /opt/tunnelmgr/web/locales
 install -d -o root -g root -m 0755 /opt/tunnelmgr/packaging/systemd
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnelctl.py" /opt/tunnelmgr/tunnelmgr/tunnelctl.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_bot.py" /opt/tunnelmgr/tunnelmgr/telegram_bot.py
@@ -218,6 +218,8 @@ install -o root -g root -m 0644 "$ROOT"/packaging/systemd/*.service /opt/tunnelm
 install -o root -g root -m 0644 "$ROOT"/packaging/systemd/*.timer /opt/tunnelmgr/packaging/systemd/
 install -o root -g root -m 0644 "$ROOT/web/index.html" /opt/tunnelmgr/web/index.html
 install -o root -g root -m 0644 "$ROOT/web/telegram-miniapp.html" /opt/tunnelmgr/web/telegram-miniapp.html
+install -o root -g root -m 0644 "$ROOT/web/i18n.js" /opt/tunnelmgr/web/i18n.js
+install -o root -g root -m 0644 "$ROOT"/web/locales/*.json /opt/tunnelmgr/web/locales/
 install -o root -g root -m 0644 "$ROOT/web/assets/"* /opt/tunnelmgr/web/assets/
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/tunnelmgr.service" /etc/systemd/system/tunnelmgr.service
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-panel-tls.service" /etc/systemd/system/avatun-panel-tls.service

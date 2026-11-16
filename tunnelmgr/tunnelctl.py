@@ -2344,6 +2344,11 @@ def server(host,port):
                 if "password" in query or "username" in query:
                     self.send_response(302);self.send_header("Location","/#settings");self.send_header("Cache-Control","no-store");self.send_header("Content-Length","0");self.end_headers();return
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/index.html";return self.send(200,f.read_bytes(),"text/html; charset=utf-8")
+            if route=="/i18n.js":
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/i18n.js";return self.send(200,f.read_bytes(),"application/javascript; charset=utf-8")
+            locale_routes={f"/locales/{code}.json":code for code in ("fa","en","ru","zh-CN","tr")}
+            if route in locale_routes:
+                f=pathlib.Path(__file__).resolve().parents[1]/"web/locales"/(locale_routes[route]+".json");return self.send(200,f.read_bytes(),"application/json; charset=utf-8")
             if route=="/assets/Yekan.woff2":
                 f=pathlib.Path(__file__).resolve().parents[1]/"web/assets/Yekan.woff2";return self.send(200,f.read_bytes(),"font/woff2")
             if route in ("/assets/avatun-logo.png",):
