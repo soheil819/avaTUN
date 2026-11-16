@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.6"
+APP_VERSION="1.0.0.7"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -948,7 +948,7 @@ def install_remote(server):
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
-            for name in ("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py"):
+            for name in ("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py","tunnelmgr"):
                 p=root/"scripts"/name
                 if p.is_file():tf.add(p,arcname=f"scripts/{name}")
             xray=pathlib.Path('/opt/tunnelmgr/bin/xray')
