@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.8"
+APP_VERSION="1.0.0.9"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -1136,7 +1136,7 @@ def delete_proxy_line(ident):
             raise
         return {'ok':True,'service':result}
 
-def normalize_forward(data,server_id):
+def normalize_forward(data,server_id,allow_missing_backends=False):
     ident=data.get("id","")
     if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError("شناسهٔ پورت‌فوروارد نامعتبر است")
     if server_id!="local" and not any(s["id"]==server_id for s in server_rows()):raise ValueError("سرور شنود در فهرست مدیریت‌شده‌ها نیست")
@@ -1171,7 +1171,9 @@ def normalize_forward(data,server_id):
         role=entry.get("role","primary")
         if role not in ("primary","backup"):raise ValueError("نقش مسیر باید primary یا backup باشد")
         item=tunnel_map.get(tunnel_id)
-        if not item:raise ValueError(f"تونل {tunnel_id} روی سرور انتخاب‌شده پیدا نشد")
+        if not item:
+            if allow_missing_backends:continue
+            raise ValueError(f"تونل {tunnel_id} روی سرور انتخاب‌شده پیدا نشد")
         meta=item.get("metadata",{});transport=meta.get("transport","")
         if transport=="erspan":raise ValueError("ERSPAN برای حمل ترافیک پورت‌فوروارد مناسب نیست")
         remote=meta.get("tun_remote")
@@ -1206,6 +1208,9 @@ def normalize_forward(data,server_id):
                 address=str(address_ip)
             else:address=str(peer_address)
         backends.append({"tunnel_id":tunnel_id,"address":address,"weight":weight,"role":role})
+    if not backends:raise ValueError("هیچ مسیر تونلی معتبری باقی نمانده؛ قانون HAProxy را حذف یا مسیر تازه اضافه کن")
+    if allow_missing_backends and algorithm=="first" and not any(backend["role"]=="primary" for backend in backends):
+        backends[0]={**backends[0],"role":"primary"}
     if algorithm=="first" and sum(1 for backend in backends if backend["role"]=="primary")!=1:
         raise ValueError("در حالت Failover دقیقاً یک مسیر را Primary انتخاب کن؛ بقیه مسیرها Backup هستند")
     enabled=data.get("enabled",True)
@@ -1340,6 +1345,44 @@ def apply_forward_set(server_id,rules):
         result=server_remote(server,{"op":"forward-apply","rules":payload})
     if not result.get("ok"):raise RuntimeError(result.get("error",result.get("status","HAProxy apply failed")))
     return result
+
+def _remove_forward_backends_locked(server_id,tunnel_ids):
+    current=forward_rows();updated={};removed=[];removed_backends=0
+    for rule in current:
+        if rule.get("server_id","local")!=server_id:continue
+        backends=rule.get("backends",[])
+        remaining=[backend for backend in backends if backend.get("tunnel_id") not in tunnel_ids]
+        dropped=len(backends)-len(remaining)
+        if not dropped:continue
+        removed_backends+=dropped
+        if remaining:
+            if rule.get("algorithm")=="first" and not any(backend.get("role","primary")=="primary" for backend in remaining):
+                remaining[0]={**remaining[0],"role":"primary"}
+            updated[rule["id"]]={**rule,"backends":remaining}
+        else:removed.append(rule["id"])
+    if not removed_backends:return {"removed_backends":0,"removed_rules":0}
+    previous=[rule for rule in current if rule.get("server_id","local")==server_id]
+    desired=[updated.get(rule["id"],rule) for rule in previous if rule["id"] not in removed]
+    apply_forward_set(server_id,desired)
+    try:
+        with db() as connection:
+            for ident,rule in updated.items():
+                connection.execute("UPDATE port_forwards SET config=? WHERE id=?",(json.dumps(rule),ident))
+            for ident in removed:
+                connection.execute("DELETE FROM port_forwards WHERE id=?",(ident,))
+    except Exception:
+        try:apply_forward_set(server_id,previous)
+        except Exception:pass
+        raise
+    return {"removed_backends":removed_backends,"removed_rules":len(removed)}
+
+def remove_tunnel_from_forward_backends(server_id,tunnel_id):
+    with FORWARD_LOCK:return _remove_forward_backends_locked(server_id,{tunnel_id})
+
+def prune_missing_forward_backends_locked(server_id,available_tunnel_ids):
+    available_tunnel_ids=set(available_tunnel_ids)
+    stale={backend.get("tunnel_id") for rule in forward_rows() if rule.get("server_id","local")==server_id for backend in rule.get("backends",[]) if backend.get("tunnel_id") not in available_tunnel_ids}
+    return _remove_forward_backends_locked(server_id,stale)
 
 def set_forward_enabled(ident, server_id, enabled):
     if type(enabled) is not bool:
@@ -2743,7 +2786,13 @@ def server(host,port):
                     if action=="set-enabled":
                         return self.send(200,set_forward_enabled(ident,server_id,data.get("enabled")))
                     if action in ("create","update"):
-                        config=normalize_forward(data,server_id)
+                        if server_id=="local":available_tunnels=rows()
+                        else:
+                            target=next(s for s in server_rows() if s["id"]==server_id)
+                            available_tunnels=server_remote(target,{"op":"list"}).get("items",[])
+                            if not isinstance(available_tunnels,list):raise ValueError("فهرست تونل‌های سرور انتخاب‌شده معتبر نیست")
+                        cleanup=prune_missing_forward_backends_locked(server_id,{item.get("id") for item in available_tunnels if isinstance(item,dict)})
+                        config=normalize_forward(data,server_id,allow_missing_backends=action=="update")
                         current=forward_rows();exists=next((x for x in current if x["id"]==config["id"]),None)
                         if action=="create" and exists:raise ValueError("این شناسه از قبل ثبت شده است")
                         if action=="update" and (not exists or exists.get("server_id","local")!=server_id):raise ValueError("قانون پورت‌فوروارد روی این سرور پیدا نشد")
@@ -2751,7 +2800,7 @@ def server(host,port):
                         desired=[x for x in current if x.get("server_id","local")==server_id and x["id"]!=config["id"]]+[config]
                         apply_forward_set(server_id,desired)
                         with db() as c:c.execute("INSERT INTO port_forwards(id,config) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config",(config["id"],json.dumps(config)))
-                        return self.send(201 if action=="create" else 200,{"ok":True,"item":config})
+                        return self.send(201 if action=="create" else 200,{"ok":True,"item":config,"ha_cleanup":cleanup})
                     if action=="delete":
                         if not isinstance(ident,str) or not ID.fullmatch(ident):raise ValueError("شناسهٔ قانون نامعتبر است")
                         current=forward_rows();existing=next((x for x in current if x["id"]==ident),None)
@@ -2809,7 +2858,10 @@ def server(host,port):
                 try:
                     if remote_op[3]=='restart':
                         data=self.body();return self.send(200,rebuild_tunnel_pair(remote_op[2],data.get('servers')))
-                    return self.send(200,server_remote(srv,{"op":"operate","id":remote_op[2],"action":remote_op[3]}))
+                    cleanup=remove_tunnel_from_forward_backends(remote_op[1],remote_op[2]) if remote_op[3]=='delete' else None
+                    result=server_remote(srv,{"op":"operate","id":remote_op[2],"action":remote_op[3]})
+                    if cleanup:result["ha_cleanup"]=cleanup
+                    return self.send(200,result)
                 except Exception as e:return self.send(400,{"error":str(e)})
             if self.path=="/api/v1/servers":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
@@ -2993,6 +3045,7 @@ def server(host,port):
                     if not find(ident):return self.send(404,{"error":"not found"})
                     item=find(ident)
                     native=item["metadata"].get("native_profile")
+                    cleanup=remove_tunnel_from_forward_backends("local",ident) if op=="delete" else None
                     if op=="restart" and item["metadata"].get("transport")=="ipsec-esp-udp":
                         response=restart_ipsec_pair(ident)
                     else:
@@ -3002,6 +3055,7 @@ def server(host,port):
                         with db() as c:
                             c.execute("DELETE FROM tunnels WHERE id=?",(ident,))
                             c.execute("DELETE FROM tunnel_speedtests WHERE id=?",(ident,))
+                    if cleanup:response["ha_cleanup"]=cleanup
                     return self.send(200,{"ok":True,"id":ident,"operation":op,**response})
                 return self.send(404,{"error":"not found"})
             except Exception as e:return self.send(400,{"error":str(e)})
