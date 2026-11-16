@@ -1,0 +1,1053 @@
+{
+  "name": "English",
+  "direction": "ltr",
+  "messages": {
+    "ورود به پنل": "Sign in to the panel",
+    "با حساب کاربری سرور وارد شوید.": "Sign in with your server account.",
+    "نام کاربری": "Username",
+    "گذرواژه": "Password",
+    "ورود امن": "Sign in securely",
+    "نمای کلی": "Overview",
+    "تونل‌ها": "Tunnels",
+    "پورت‌فوروارد": "Port forwarding",
+    "خطوط پروکسی": "Proxy lines",
+    "مسیریابی": "Routing",
+    "نقشه Mesh": "Mesh map",
+    "سرورها": "Servers",
+    "کاربران": "Users",
+    "تنظیمات": "Settings",
+    "مدیریت یکپارچه زیرساخت": "Unified infrastructure management",
+    "وضعیت زنده تونل‌ها و گره‌های شبکه": "Live status of tunnels and network nodes",
+    "در حال اتصال…": "Connecting…",
+    "به‌روزرسانی": "Refresh",
+    "خروج": "Sign out",
+    "به‌روزرسانی پنل": "Update panel",
+    "مرکز کنترل شبکه": "Network control center",
+    "زیرساختت، یک نگاه باخبر": "Your infrastructure at a glance",
+    "سلامت لینک‌ها و منابع هر سرور را زنده دنبال کن.": "Monitor link health and server resources in real time.",
+    "دانلود مرکزی": "Total download",
+    "آپلود مرکزی": "Total upload",
+    "سرور آنلاین": "Online servers",
+    "تونل برقرار": "Active tunnels",
+    "مصرف منابع سرورها": "Server resource usage",
+    "پایش فعال": "Monitoring active",
+    "نمای کلی توپولوژی": "Topology overview",
+    "شبکه در یک نگاه": "Your network at a glance",
+    "باز کردن نقشه Mesh ←": "Open mesh map →",
+    "تونل قطع": "Tunnel down",
+    "وضعیت نامشخص": "Unknown status",
+    "موقعیت GeoIP سرورها": "Server GeoIP locations",
+    "نقشهٔ زندهٔ جهان": "Live world map",
+    "فعالیت اخیر": "Recent activity",
+    "آخرین وضعیت تونل‌ها": "Latest tunnel status",
+    "رفتن به فهرست کامل ←": "View all →",
+    "مدیریت تونل‌ها": "Manage tunnels",
+    "＋ ساخت تونل": "＋ Create tunnel",
+    "نوع تونل": "Tunnel type",
+    "جهت": "Direction",
+    "IP داخلی": "Internal IP",
+    "سرعت تقریبی": "Estimated speed",
+    "عملیات": "Actions",
+    "وضعیت": "Status",
+    "نوع": "Type",
+    "سرور": "Server",
+    "پینگ": "Ping",
+    "افزودن سرور": "Add server",
+    "ثبت سرور": "Add server",
+    "سرورهای مدیریت‌شده": "Managed servers",
+    "میزبان": "Host",
+    "SSH": "SSH",
+    "سرویس پنل": "Panel service",
+    "نسخه avatun": "avaTUN version",
+    "گذرواژه (حداقل ۱۲ نویسه)": "Password (at least 12 characters)",
+    "ساخت حساب": "Create account",
+    "کاربران پنل": "Panel users",
+    "ساخت تونل": "Create tunnel",
+    "شناسه تونل": "Tunnel ID",
+    "جهت راه‌اندازی": "Connection direction",
+    "سرور پنل": "Panel server",
+    "سرور A / سمت آغاز": "Server A / initiating side",
+    "سرور B / سمت peer": "Server B / peer side",
+    "ساخت و اجرا": "Create and start",
+    "بستن": "Close",
+    "انصراف": "Cancel",
+    "ذخیره تنظیمات": "Save settings",
+    "ذخیره تغییرات": "Save changes",
+    "بازخوانی": "Refresh",
+    "همه‌چیز زیر کنترل تو.": "Everything under control.",
+    "دسترسی سریع": "Quick access",
+    "کنترل‌های مهم": "Key controls",
+    "وضعیت شبکه، تونل‌ها و سرورها را یک‌جا ببین و عملیات را با چند لمس انجام بده.": "See your network, tunnels, and servers in one place, and manage them with a few taps.",
+    "اتصال و سلامت میزبان‌ها": "Host connectivity and health",
+    "وضعیت و راه‌اندازی مجدد": "Status and restart",
+    "منابع زنده": "Live resources",
+    "آخرین نمونه‌ها": "Latest samples",
+    "عملیات و گزارش": "Actions and reports",
+    "مدیریت سریع": "Quick management",
+    "بیشتر": "More",
+    "خانه": "Home",
+    "تغییر تم": "Change theme",
+    "نسخه و به‌روزرسانی": "Version and updates",
+    "بررسی نسخه": "Check for updates",
+    "نصب نسخه": "Install update",
+    "در حال احراز هویت با تلگرام…": "Authenticating with Telegram…",
+    "وضعیت به‌روزرسانی سرور": "Server update status",
+    "جزئیات فنی": "Technical details",
+    "تلاش دوباره برای به‌روزرسانی": "Retry update",
+    "تنظیم گزارش منابع تلگرام": "Telegram resource reports",
+    "ارسال گزارش و هشدار منابع برای این سرور فعال باشد": "Send resource reports and alerts for this server",
+    "شاخص‌هایی که پایش و در تلگرام گزارش شوند": "Metrics to monitor and report on Telegram",
+    "دیسک": "Disk",
+    "شبکه · دانلود و آپلود": "Network · download and upload",
+    "حساب نخست را مدیر سرور با دستور tunnelmgr account create می‌سازد.": "The server administrator creates the first account with tunnelmgr account create.",
+    "برای چرخش افقی و عمودی، کره را به هر جهت بکش": "Drag the globe in any direction to rotate it",
+    "نام دو سرور، نوع اتصال، آدرس داخلی، MTU، وضعیت و پینگ هر تونل را ببین و مدیریت کن.": "View and manage each tunnel’s servers, connection type, internal address, MTU, status, and ping.",
+    "سنجش و اعمال MTU همهٔ تونل‌ها": "Measure and apply MTU to all tunnels",
+    "پورت‌فوروارد TCP با HAProxy": "TCP port forwarding with HAProxy",
+    "سرور ورودی را انتخاب کن؛ سپس مسیرهای تونلی همان سرور را به‌عنوان pool مقصد بگذار. HAProxy سلامت پورت مقصد را بررسی می‌کند و مسیرهای خراب را از چرخش خارج می‌کند.": "Select an entry server, then use its tunnel paths as the backend pool. HAProxy checks backend port health and removes unhealthy paths from rotation.",
+    "در حال بررسی HAProxy…": "Checking HAProxy…",
+    "سرور شنود و اجرای HAProxy": "Server listening and running HAProxy",
+    "سرور مرکزی پنل": "Central panel server",
+    "شناسه قانون": "Rule ID",
+    "پورت ورودی": "Incoming port",
+    "پورت سرویس مقصد": "Backend service port",
+    "الگوریتم توزیع اتصال‌ها": "Connection balancing algorithm",
+    "کمترین اتصال فعال (Least connections)": "Fewest active connections (least connections)",
+    "چرخشی (Round robin)": "Round robin",
+    "ثبات بر اساس IP مبدأ (Source)": "Keep connections by source IP (source)",
+    "اتصال‌های جاری را حفظ کن": "Keep existing connections",
+    "اتصال‌های جاری را ببند": "Close existing connections",
+    "مسیرهای تونلی این سرور": "This server’s tunnel paths",
+    "شناسهٔ تونل": "Tunnel ID",
+    "مقصد سفارشی (اختیاری)": "Custom destination (optional)",
+    "ساخت و فعال‌سازی": "Create and enable",
+    "قوانین فعال": "Active rules",
+    "خط‌های خروجی VLESS / VMess / Trojan": "VLESS / VMess / Trojan outbound lines",
+    "وضعیت Xray": "Xray status",
+    "شناسه خط": "Line ID",
+    "لینک VLESS، VMess یا Trojan": "VLESS, VMess, or Trojan link",
+    "ساخت و راه‌اندازی خط": "Create and start line",
+    "خط‌های ثبت‌شده": "Configured lines",
+    "سرور پروکسی": "Proxy server",
+    "وضعیت Xray مرکزی": "Central Xray status",
+    "فوروارد روی خط پروکسی": "Forward through a proxy line",
+    "خط خروجی": "Outbound line",
+    "انتخاب خط": "Select a line",
+    "ساخت فوروارد": "Create forward",
+    "فورواردهای پروکسی": "Proxy forwards",
+    "مسیریابی پویا روی تونل": "Dynamic routing over a tunnel",
+    "همسایگی‌های مسیریابی": "Routing neighbors",
+    "وضعیت A": "Status A",
+    "وضعیت B": "Status B",
+    "توپولوژی زنده": "Live topology",
+    "نقشه شبکه Mesh": "Mesh network map",
+    "سرورها را بکش تا چیدمان را عوض کنی.": "Drag servers to change the layout.",
+    "برای ویرایش تونل، روی برچسب مسیر کلیک کن.": "Click a path label to edit the tunnel.",
+    "مسیر برقرار": "Path up",
+    "مسیر قطع": "Path down",
+    "با گذرواژه SSH یک‌بار وصل می‌شویم و کلید مدیریتی نصب می‌کنیم؛ گذرواژه ذخیره نمی‌شود و اتصال‌های بعدی با کلید انجام می‌شوند.": "Connect once with the SSH password to install an admin key. The password is not saved; later connections use the key.",
+    "بررسی وضعیت‌ها": "Check status",
+    "امنیت حساب": "Account security",
+    "ورود دومرحله‌ای": "Two-factor authentication",
+    "رفتن به تنظیم HTTPS": "Open HTTPS settings",
+    "گذرواژهٔ فعلی": "Current password",
+    "کد برنامه": "Authenticator code",
+    "تأیید و فعال‌سازی": "Verify and enable",
+    "تأیید و ورود": "Verify and sign in",
+    "کدهای بازیابی": "Recovery codes",
+    "ذخیره کردم": "I saved them",
+    "به‌روزرسانی پنل مرکزی": "Update central panel",
+    "وضعیت نسخه از GitHub خوانده می‌شود.": "Version status is retrieved from GitHub.",
+    "در حال بررسی…": "Checking…",
+    "بررسی اکنون": "Check now",
+    "ربات تلگرام": "Telegram bot",
+    "توکن BotFather": "BotFather token",
+    "ساخت کاربر": "Create user",
+    "سطح دسترسی": "Access level",
+    "مشاهده": "Viewer",
+    "اپراتور": "Operator",
+    "مدیر": "Admin",
+    "در حال بارگذاری…": "Loading…",
+    "ایران · سرور کوچک": "Iran · small server",
+    "خارج از ایران · رک سرور": "Outside Iran · rack server",
+    "تشخیص خودکار با GeoIP": "Detect automatically with GeoIP",
+    "عبور SSH از سرور پروکسی": "Route SSH through proxy server",
+    "بدون پروکسی": "No proxy",
+    "یا عبور SSH از خط Xray": "Or route SSH through an Xray line",
+    "بدون خط پروکسی": "No proxy line",
+    "گذرواژه SSH (اختیاری)": "SSH password (optional)",
+    "لینک ثبت‌شده": "Configured links",
+    "تونل‌های برقرار": "Active tunnels",
+    "پایش سلامت": "Health monitoring",
+    "به‌علاوه سرور پنل": "Including the panel server",
+    "سرورهای آنلاین": "Online servers",
+    "از میان سرورهای ثبت‌شده": "Of registered servers",
+    "زنده · به‌روزرسانی هر ۲ ثانیه": "Live · updates every 2 seconds",
+    "پردازنده، حافظه، Swap و فضای دیسک در هر گره": "CPU, memory, swap, and disk space on each node",
+    "در حال گرفتن نخستین نمونه از سرورها…": "Collecting the first sample from servers…",
+    "در حال مکان‌یابی…": "Locating…",
+    "Backhaul": "Backhaul",
+    "WireGuard": "WireGuard",
+    "OpenVPN": "OpenVPN",
+    "Direct · این سمت آغازگر / Client": "Direct · this side initiates / client",
+    "Reverse · این سمت شنونده / Server": "Reverse · this side listens / server",
+    "محاسبه MTU هنگام ساخت": "Calculate MTU on creation",
+    "تشخیص MTU مسیر و کسر سربار نوع تونل": "Detect path MTU and account for tunnel overhead",
+    "برای تنظیم دستی، این گزینه را خاموش و MTU را وارد کن.": "For manual setup, turn this off and enter the MTU.",
+    "روش انتقال Backhaul": "Backhaul transport",
+    "همهٔ روش‌ها یک رابط TUN با IP داخلی واقعی می‌سازند؛ بستر انتقال را انتخاب کن. IP و نام رابط پس از بررسی دو سرور انتخاب می‌شوند.": "All methods create a TUN interface with a real internal IP. Choose the transport; the IP and interface name are selected after both servers are checked.",
+    "کپسوله‌سازی TUN": "TUN encapsulation",
+    "IPX خام": "Raw IPX",
+    "آدرس داخلی این سمت / CIDR": "This side’s internal address / CIDR",
+    "آدرس داخلی peer / CIDR": "Peer internal address / CIDR",
+    "IP بیرونی محلی (IPv4)": "Local public IP (IPv4)",
+    "IP بیرونی peer (IPv4)": "Peer public IP (IPv4)",
+    "رابط بیرونی": "Outer interface",
+    "پروفایل IPX": "IPX profile",
+    "تغییر IP مبدأ (Spoof)": "Source IP spoofing",
+    "تنظیم IP مبدأ بسته‌های خام برای دو سرور": "Set source IPs for raw packets on both servers",
+    "IP مبدأ ساختگی سرور A": "Spoofed source IP for server A",
+    "IP مبدأ ساختگی سرور B": "Spoofed source IP for server B",
+    "Port map روی سمت server": "Port map on the server side",
+    "مثال 443=443؛ این پورت‌ها روی سرور مقصد/شنونده به سرویس‌های همان سرور می‌رسند.": "Example: 443=443. These ports reach services on the destination/listening server.",
+    "اندازه pool اتصال": "Connection pool size",
+    "آدرس شنود سمت پاسخ‌دهنده": "Listener address on the responder",
+    "رابط TUN": "TUN interface",
+    "پورت پایش": "Monitoring port",
+    "گواهی TLS سمت server": "TLS certificate on the server side",
+    "کلید TLS سمت server": "TLS key on the server side",
+    "CA سمت client (اختیاری)": "CA on the client side (optional)",
+    "SNI سمت client (اختیاری)": "SNI on the client side (optional)",
+    "Edge IP سمت client (اختیاری)": "Edge IP on the client side (optional)",
+    "Source bind سمت client (اختیاری)": "Source bind on the client side (optional)",
+    "تنظیم TCP": "TCP settings",
+    "پذیرش UDP روی TCP server": "Accept UDP on the TCP server",
+    "دریافت PROXY protocol": "Receive PROXY protocol",
+    "مسیر secret مشترک (اختیاری؛ خالی بگذاری خودکار ساخته می‌شود)": "Shared secret path (optional; generated automatically if left blank)",
+    "برای TUN/TCP آدرس‌های داخلی دو peer را وارد کن.": "For TUN/TCP, enter the internal addresses of both peers.",
+    "رابط": "Interface",
+    "IP بیرونی سرور A": "Public IP of server A",
+    "IP بیرونی سرور B": "Public IP of server B",
+    "Inner local IP/CIDR": "Inner local IP/CIDR",
+    "Inner peer IP/CIDR": "Inner peer IP/CIDR",
+    "رابط سمت دوم": "Interface on the second side",
+    "پورت UDP دو سمت": "UDP port on both sides",
+    "Keepalive (ثانیه)": "Keepalive (seconds)",
+    "پنل پس از بررسی هر دو سرور، شناسه‌های tunnel و session را تصادفی می‌سازد و برای Encap=UDP در هر سرور پورت آزاد انتخاب می‌کند؛ بیرون بازهٔ ephemeral را ترجیح می‌دهد و اگر سیستم کل بازه را موقت بداند، یک پورت اشغال‌نشده را برمی‌گزیند؛ بعد از ساخت، پورت‌ها را در فایروال دو سر باز کن.": "After checking both servers, the panel creates random tunnel and session IDs and selects an unused UDP port on each server. It prefers ports outside the ephemeral range; if the system reserves the whole range, it chooses another unused port. Open the selected ports in both firewalls.",
+    "پنل IP داخلی بدون تداخل، شناسهٔ یکتای IKE برای همین تونل، PSK قوی مشترک و نقش آغازگر/پاسخ‌دهنده را خودکار تنظیم می‌کند.": "The panel automatically selects unused internal IPs, a unique IKE ID for this tunnel, a strong shared PSK, and initiator/responder roles.",
+    "پاسخ‌دهنده": "Responder",
+    "آغازکننده": "Initiator",
+    "SPI محلی / peer": "Local / peer SPI",
+    "AES-256 key محلی / peer (hex)": "Local / peer AES-256 key (hex)",
+    "HMAC key محلی / peer (hex)": "Local / peer HMAC key (hex)",
+    "تنظیمات سمت B خودکار از سمت A ساخته می‌شود؛ IPها، شناسه‌ها و پورت‌های جفتی معکوس می‌شوند.": "Side B is generated from side A; paired IPs, IDs, and ports are reversed.",
+    "در حال انجام عملیات…": "Working…",
+    "ویرایش اتصال سرور": "Edit server connection",
+    "IP، کاربر SSH، موقعیت و مسیر پروکسی را تغییر بده.": "Change the IP, SSH user, location, and proxy route.",
+    "IP یا نام میزبان": "IP address or hostname",
+    "موقعیت سرور برای نقشه · تشخیص خودکار GeoIP": "Server location on map · automatic GeoIP detection",
+    "با تغییر IP، موقعیت از GeoIP دوباره تشخیص داده می‌شود؛ در صورت خطا این انتخاب حفظ می‌شود.": "When the IP changes, GeoIP checks the location again. If detection fails, this selection is kept.",
+    "کاربر SSH": "SSH user",
+    "برای نصب دوبارهٔ کلید مدیریتی روی حساب SSH جدید یا تأیید دسترسی استفاده می‌شود؛ پنل آن را ذخیره نمی‌کند. اگر خالی باشد از کلید فعلی استفاده می‌شود.": "Used to install the admin key on a new SSH account or verify access. The panel does not store it. Leave blank to use the current key.",
+    "اگر IP عوض شود، IP بیرونی همهٔ تونل‌های مرتبط در هر دو سمت به‌روزرسانی و endpointهای تغییرکرده راه‌اندازی مجدد می‌شوند؛ در این مدت ترافیک آن تونل‌ها برای لحظه‌ای قطع می‌شود.": "If the IP changes, the public IP on both ends of related tunnels is updated and affected endpoints restart. Tunnel traffic pauses briefly during this process.",
+    "کد برنامه یا کد بازیابی": "Authenticator code or recovery code",
+    "در انتظار نخستین نمونه‌برداری": "Waiting for the first sample",
+    "این نسخه TCP را مدیریت می‌کند. پورت شنود فقط هنگام ذخیرهٔ قانون باز می‌شود. برای مقصد، برنامه باید روی IP داخلی peer، IP خصوصی‌ای که از مسیر BGP/OSPF اعلام شده، یا مقصدی که مسیرش از رابط TUN/IPX عبور می‌کند گوش کند؛ مسیر IPX هنگام اعمال قانون بررسی می‌شود.": "This version manages TCP. The listening port opens only when you save the rule. The backend service must listen on the peer’s internal IP, a private IP advertised through BGP/OSPF, or an address routed through TUN/IPX. IPX routes are checked when the rule is applied.",
+    "IP شنود روی سرور انتخاب‌شده": "Listening IP on the selected server",
+    "Failover · مسیر اصلی و پشتیبان (اولین مسیر سالم)": "Failover · primary and backup paths (first healthy path)",
+    "در Failover دقیقاً یک مسیر را «اصلی» و بقیه را «پشتیبان» کن. پشتیبان فقط وقتی مسیر اصلی ناسالم باشد استفاده می‌شود. اتصال‌های TCP قطع‌شده با تغییر مسیر خودکار از ابتدا وصل می‌شوند.": "For failover, set exactly one path as primary and the rest as backups. A backup is used only when the primary is unhealthy. Disconnected TCP sessions reconnect through the new path.",
+    "ارسال PROXY به سرویس مقصد": "Send PROXY protocol to the backend",
+    "غیرفعال": "Disabled",
+    "خیر": "No",
+    "هنگام قطع مقصد": "When the backend disconnects",
+    "IP داخلی peer": "Peer internal IP",
+    "لغو ویرایش": "Cancel editing",
+    "نشانی شنود": "Listen address",
+    "مسیرهای مقصد": "Backend paths",
+    "روش توزیع": "Balancing method",
+    "لینک اشتراک را وارد کن؛ avaTUN آن را به‌صورت یک خط Xray مستقل مدیریت می‌کند.": "Enter a subscription link. avaTUN manages it as a separate Xray line.",
+    "پنل Xray Core نسخهٔ مستقل خودش را با checksum نصب می‌کند و سرویس یا فایل Xray/x-ui موجود را تغییر نمی‌دهد. پورت شنود باید آزاد باشد؛ اگر TCP/UDP روی IP و پورت انتخابی در حال استفاده باشد، فوروارد رد می‌شود و سرویس موجود دست‌نخورده می‌ماند. خط SSH فقط برای سرورهایی استفاده می‌شود که همین مسیر را در تنظیم اتصال انتخاب کرده‌اند.": "The panel installs its own Xray Core version and verifies its checksum. It does not change existing Xray/x-ui services or files. The listen port must be free. If TCP/UDP is already in use on the selected IP and port, forwarding is rejected and the existing service is left untouched. The SSH line is used only for servers configured to use it.",
+    "لینک محرمانه ذخیره می‌شود و در فهرست دوباره نمایش داده نمی‌شود.": "The private link is saved but is not shown again in the list.",
+    "پروتکل": "Protocol",
+    "روی سرور انتخابی پورت TCP یا UDP باز می‌شود و مقصد از خط انتخاب‌شده عبور می‌کند.": "A TCP or UDP port opens on the selected server, and traffic to the destination passes through the selected line.",
+    "پورت مقصد": "Destination port",
+    "ورودی": "Incoming",
+    "BGP یا OSPF را روی یک لینک IP موجود فعال کن. فقط پیشوندهای خصوصی مشخص‌شده بین دو سرور مبادله می‌شوند.": "Enable BGP or OSPF on an existing IP link. Only the specified private prefixes are exchanged between the two servers.",
+    "این تنظیمات مسیریابی هستند، نه تونل مستقل. هر دو سمت باید پنل نصب‌شده و همان لینک تونلی فعال داشته باشند. برای BGP، ASN محلی و peer را وارد کن؛ برای OSPF، Area مشترک را.": "These are routing settings, not a separate tunnel. Both servers must have the panel installed and the same active tunnel link. For BGP, enter the local and peer ASNs; for OSPF, enter the shared area.",
+    "لینک تونلی بین دو سرور": "Tunnel link between the two servers",
+    "Area مشترک": "Shared area",
+    "شبکه‌های خصوصی قابل اعلان از سرور A": "Private networks to advertise from server A",
+    "شبکه‌های خصوصی قابل اعلان از سرور B": "Private networks to advertise from server B",
+    "ساخت همسایگی در دو سمت": "Create neighbors on both sides",
+    "ارتباط سرورها و وضعیت هر تونل را یک‌جا ببین؛ برای ویرایش روی مسیر بزن.": "View server connections and each tunnel’s status in one place. Click a path to edit it.",
+    "بازنشانی زوم": "Reset zoom",
+    "چیدمان خودکار": "Auto layout",
+    "بازخوانی وضعیت": "Refresh status",
+    "برای سیم‌کشی، یک گره را انتخاب کن و گرهٔ مقصد را بزن.": "To create a connection, select a node, then select the destination node.",
+    "مسیر تونل": "Tunnel path",
+    "فوروارد پروکسی": "Proxy forward",
+    "شبکه‌ای": "Network",
+    "تونل‌های شبکه": "Network tunnels",
+    "با واردکردن IP یا نام میزبان، کشور به‌صورت خودکار تشخیص داده می‌شود.": "The country is detected automatically when you enter an IP address or hostname.",
+    "عبور SSH از سرور پروکسی (اختیاری)": "Route SSH through a proxy server (optional)",
+    "از یک سرور ثبت‌شده به‌عنوان SSH bastion / ProxyJump استفاده می‌شود.": "Use a registered server as an SSH bastion / ProxyJump.",
+    "فقط اتصال‌های پنل به همین سرور از این خط می‌گذرند؛ مسیر پیش‌فرض سرور تغییر نمی‌کند.": "Only panel connections to this server use this line; the server’s default route is unchanged.",
+    "گذرواژه SSH (فقط برای ثبت اولیه)": "SSH password (first setup only)",
+    "پس از نصب کلید، گذرواژه از حافظهٔ درخواست پاک می‌شود.": "The password is cleared from memory after the key is installed.",
+    "کلید خصوصی SSH (اختیاری)": "SSH private key (optional)",
+    "کلید با دسترسی 0600 در پوشه امن پنل ذخیره می‌شود؛ می‌توانی به‌جایش گذرواژهٔ SSH بدهی.": "The key is saved in the panel’s secure directory with 0600 permissions. You can provide an SSH password instead.",
+    "نصب پنل پس از ثبت": "Install the panel after adding the server",
+    "اتصال SSH و نصب / به‌روزرسانی خودکار": "Connect over SSH and install/update automatically",
+    "گزارش تلگرام": "Telegram reports",
+    "در حال خواندن وضعیت…": "Loading status…",
+    "تنظیم یا تأیید کد دومرحله‌ای فقط روی HTTPS انجام می‌شود. ابتدا برای پنل گواهی HTTPS تنظیم کن.": "Two-factor setup and verification are available only over HTTPS. Set up an HTTPS certificate for the panel first.",
+    "راه‌اندازی برنامهٔ احراز هویت": "Set up an authenticator app",
+    "این QR را با Google Authenticator یا برنامهٔ سازگار اسکن کن. اگر اسکن ممکن نیست، کلید را دستی وارد کن؛ سپس کد شش‌رقمی برنامه را ثبت کن.": "Scan this QR code with Google Authenticator or a compatible app. If you cannot scan it, enter the key manually, then enter the app’s six-digit code.",
+    "برای ادامه، کد برنامه یا یکی از کدهای بازیابی را وارد کن.": "Enter an authenticator code or a recovery code to continue.",
+    "کد احراز هویت": "Authentication code",
+    "ورود دومرحله‌ای فعال است. کدهای بازیابی را در جای امن نگه دار؛ هر کد فقط یک بار قابل استفاده است.": "Two-factor authentication is on. Keep your recovery codes somewhere safe; each code can be used once.",
+    "کد فعلی برنامه برای ساخت کدهای بازیابی جدید": "Current authenticator code to generate new recovery codes",
+    "ساخت کدهای بازیابی جدید": "Generate new recovery codes",
+    "غیرفعال‌کردن ورود دومرحله‌ای": "Turn off two-factor authentication",
+    "این کدها فقط اکنون نمایش داده می‌شوند. آن‌ها را ذخیره کن.": "These codes are shown only once. Save them now.",
+    "بررسی و به‌روزرسانی پنل مرکزی": "Check for and install central panel updates",
+    "HTTPS پنل با گواهی Let’s Encrypt": "Panel HTTPS with a Let’s Encrypt certificate",
+    "یک پورت واحد برای HTTP و HTTPS انتخاب کن. پورت ۴۴۳ برای سرویس‌ها آزاد می‌ماند.": "Choose one port for HTTP and HTTPS. Port 443 remains available for other services.",
+    "دامنه باید به IP همین سرور اشاره کند. برای صدور و تمدید خودکار گواهی، TCP پورت ۸۰ باید از اینترنت به سرور برسد و سرویس دیگری آن را اشغال نکرده باشد؛ رکوردهای A/AAAA دامنه هم باید به همین سرور برسند. ورود HTTP فعلی حفظ می‌شود؛ HTTPS روی همان پورتی باز می‌شود که اینجا انتخاب می‌کنی.": "The domain must point to this server’s IP. For automatic certificate issuance and renewal, TCP port 80 must be reachable from the internet and unused by other services. The domain’s A/AAAA records must also point here. Existing HTTP access stays available; HTTPS uses the port you choose below.",
+    "دامنه یا زیردامنه": "Domain or subdomain",
+    "ایمیل اعلان گواهی": "Certificate notification email",
+    "پورت مشترک HTTP و HTTPS": "Shared HTTP and HTTPS port",
+    "پیش‌فرض ۸۷۶۵ است. پورت ۴۴۳ رزرو می‌ماند؛ پورت انتخابی باید در فایروال سرور و ارائه‌دهنده باز باشد.": "The default is 8765. Port 443 stays reserved; allow the selected port in the server and provider firewalls.",
+    "صدور گواهی در پس‌زمینه انجام می‌شود. پنل پس از نصب گواهی، اتصال‌های HTTP و HTTPS را روی همین پورت می‌پذیرد. اگر پورت را تغییر دهی، نشانی پنل هم به پورت جدید منتقل می‌شود.": "The certificate is issued in the background. After installation, the panel accepts HTTP and HTTPS on this port. Changing the port also changes the panel address.",
+    "دریافت و نصب گواهی": "Get and install certificate",
+    "در حال صدور گواهی…": "Issuing certificate…",
+    "توکن دسترسی ربات و شناسهٔ مدیران تلگرام را تنظیم کن.": "Set the bot access token and Telegram administrator IDs.",
+    "در حال خواندن تنظیمات…": "Loading settings…",
+    "توکن فعلی در مرورگر نمایش داده نمی‌شود. برای حفظ همان توکن، کادر توکن را خالی بگذار. پس از ذخیره، سرویس ربات خودکار راه‌اندازی مجدد می‌شود.": "The current token is never shown in the browser. Leave the token field blank to keep it. The bot service restarts automatically after saving.",
+    "شناسهٔ عددی مدیران (با ویرگول جدا کن)": "Numeric administrator IDs (comma-separated)",
+    "ذخیره و راه‌اندازی مجدد ربات": "Save and restart bot",
+    "نوع، جهت اتصال و مشخصات دو سر تونل را وارد کنید.": "Enter the tunnel type, connection direction, and details for both ends.",
+    "IP بیرونی سرور پنل": "Panel server public IP",
+    "TUN · لینک IP": "TUN · IP link",
+    "پنل IP مبدأ مورد انتظار هر سمت را از IP طرف مقابل می‌سازد. این تنظیم فقط مبدأ بسته‌های خام IPX را تغییر می‌دهد؛ IP واقعی دو سرور ثابت می‌ماند.": "The panel derives each side’s expected source IP from the other side’s IP. This changes only the source of raw IPX packets; the servers’ actual IPs stay the same.",
+    "پورت UDP": "UDP port",
+    "پورت TCP/UDP": "TCP/UDP port",
+    "مرکز کنترل avaTUN": "avaTUN control center",
+    "مرکز کنترل شبکه ·": "Network control center ·",
+    "CPU، RAM و ترافیک": "CPU, RAM, and traffic",
+    "گزارش و به‌روزرسانی": "Reports and updates",
+    "هشدارهای مهم": "Important alerts",
+    "＋ قانون جدید": "＋ New rule",
+    "تنظیمات Mini App": "Mini App settings",
+    "پوسته‌ی avaTUN": "avaTUN appearance",
+    "تم تیره‌ی سایبری برای کار طولانی و خوانایی بهتر طراحی شده است.": "The dark theme is designed for long sessions and easy reading.",
+    "دسترسی": "Access",
+    "برای دریافت وضعیت نسخه، دکمه‌ی بررسی را بزن.": "Select Check for updates to see the available version.",
+    "نقشه توپولوژی شبکه": "Network topology map",
+    "کرهٔ زمین سه‌بعدی با موقعیت سرورها و مسیر تونل‌ها": "3D globe showing server locations and tunnel routes",
+    "65.109.179.222 یا 0.0.0.0": "65.109.179.222 or 0.0.0.0",
+    "vless://…  یا  vmess://…  یا  trojan://…": "vless://… or vmess://… or trojan://…",
+    "10.20.0.5 یا app.example.net": "10.20.0.5 or app.example.net",
+    "کوچک‌نمایی نقشه": "Zoom out on map",
+    "بزرگ‌نمایی نقشه": "Zoom in on map",
+    "نقشه تعاملی توپولوژی و تونل‌های بین سرورها": "Interactive map of the network topology and tunnels between servers",
+    "QR راه‌اندازی ورود دومرحله‌ای": "QR code for two-factor setup",
+    "خالی بماند تا توکن فعلی حفظ شود": "Leave blank to keep the current token",
+    "انتخاب خودکار پس از بررسی دو سرور": "Selected automatically after checking both servers",
+    "مثلاً 198.51.100.10": "For example, 198.51.100.10",
+    "مثلاً 198.51.100.20": "For example, 198.51.100.20",
+    "IP جایگزین برای اتصال WebSocket": "Alternative IP for WebSocket connection",
+    "توسط پنل و پس از بررسی دو سرور انتخاب می‌شود": "Selected by the panel after checking both servers",
+    "نشست پایان یافته است": "Your session has expired.",
+    "تأیید کد": "Verify code",
+    "گواهی نصب و تمدید خودکار فعال است.": "The certificate is installed and automatic renewal is enabled.",
+    "در حال راه‌اندازی HTTPS": "Setting up HTTPS",
+    "راه‌اندازی ناموفق": "Setup failed",
+    "صدور گواهی ناموفق بود.": "Certificate issuance failed.",
+    "گواهی تنظیم نشده": "No certificate configured",
+    "وضعیت در دسترس نیست": "Status unavailable",
+    "نصب نسخهٔ جدید روی پنل مرکزی": "Install the new version on the central panel",
+    "نسخهٔ جدید موجود است": "A new version is available",
+    "در حال نصب": "Installing",
+    "پنل پس از به‌روزرسانی دوباره راه‌اندازی می‌شود.": "The panel will restart after the update.",
+    "بررسی ناموفق": "Check failed",
+    "اتصال به GitHub ناموفق بود.": "Could not connect to GitHub.",
+    "به‌روز": "Up to date",
+    "در حال بررسی": "Checking",
+    "بررسی نسخهٔ GitHub در پس‌زمینه انجام می‌شود.": "Checking the GitHub version in the background.",
+    "بررسی GitHub هنوز تمام نشده است؛ کمی بعد دوباره تلاش کن.": "The GitHub check is still running. Try again in a moment.",
+    "در حال بررسی GitHub…": "Checking GitHub…",
+    "بررسی GitHub ناموفق بود.": "The GitHub check failed.",
+    "پنل به‌روز است؛ نسخهٔ جدیدی در GitHub پیدا نشد.": "The panel is up to date. No newer version was found on GitHub.",
+    "درخواست به‌روزرسانی پنل پذیرفته شد؛ پنل پس از نصب دوباره راه‌اندازی می‌شود.": "The panel update was accepted. The panel will restart after installation.",
+    "بررسی و به‌روزرسانی پنل": "Check for and install panel updates",
+    "ربات تنظیم نشده": "Bot is not configured",
+    "سرویس ربات متوقف است": "Bot service is stopped",
+    "ربات فعال · آمادهٔ پاسخ‌گویی": "Bot is online · ready",
+    "ربات در حال راه‌اندازی": "Starting bot",
+    "اتصال تلگرام ناموفق · تلاش دوباره": "Telegram connection failed · retrying",
+    "وضعیت ربات به‌روز نیست": "Bot status is out of date",
+    "سرویس فعال · بررسی اتصال تلگرام": "Service is running · checking Telegram connection",
+    "ربات با موفقیت به تلگرام وصل شد و آمادهٔ پاسخ‌گویی است.": "The bot connected to Telegram and is ready.",
+    "ربات در حال راه‌اندازی مجدد": "Restarting bot",
+    "ربات به تلگرام وصل نشد و در حال تلاش دوباره است": "The bot could not connect to Telegram and is retrying.",
+    "؛ وضعیت بالا را بررسی کن.": "; check the status above.",
+    "تنظیمات ذخیره شد؛ در انتظار اتصال ربات به تلگرام…": "Settings saved. Waiting for the bot to connect to Telegram…",
+    "تنظیمات ذخیره شد، اما دریافت وضعیت ربات ناموفق بود:": "Settings saved, but the bot status could not be retrieved:",
+    "راه‌اندازی بیش از ۲۰ ثانیه طول کشید؛ وضعیت فعلی در نشانگر بالای این بخش نمایش داده می‌شود.": "Startup took more than 20 seconds. Check the status indicator above.",
+    "شناسهٔ عددی معتبر وارد کن؛ چند شناسه را با ویرگول جدا کن.": "Enter valid numeric IDs, separated by commas.",
+    "در حال ذخیره…": "Saving…",
+    "تنظیمات امن ذخیره می‌شود…": "Saving settings securely…",
+    "ذخیره ناموفق": "Save failed",
+    "تلاش دوباره": "Try again",
+    "درخواست ثبت شد، اما سرویس صدور گواهی شروع نشد. وضعیت سرور را بازخوانی کن.": "The request was accepted, but the certificate service did not start. Refresh the server status.",
+    "سرویس پنل در حال انتقال به پورت انتخابی است؛ برای اتصال دوباره از پیوندهای بالا استفاده کن.": "The panel is moving to the selected port. Use one of the links above to reconnect.",
+    "عملیات هنوز در حال اجراست؛ چند لحظهٔ دیگر وضعیت را بازخوانی کن.": "The operation is still running. Refresh the status in a moment.",
+    "در حال شروع…": "Starting…",
+    "درخواست به سرویس پس‌زمینه فرستاده می‌شود…": "Sending the request to the background service…",
+    "در حال آماده‌سازی صدور گواهی…": "Preparing to issue the certificate…",
+    "برای مدیرها ورود دومرحله‌ای اجباری است.": "Two-factor authentication is required for administrators.",
+    "می‌توانی ورود دومرحله‌ای را برای این حساب فعال کنی.": "You can enable two-factor authentication for this account.",
+    "ورود دومرحله‌ای فعال شد.": "Two-factor authentication enabled.",
+    "ورود دومرحله‌ای این حساب غیرفعال شود؟": "Turn off two-factor authentication for this account?",
+    "ورود دومرحله‌ای غیرفعال شد.": "Two-factor authentication disabled.",
+    "مدیریت، سلامت و عملیات تونل‌ها": "Manage tunnel operations and health",
+    "نمایش گرافیکی گره‌ها و پیوندهای شبکه": "Visualize network nodes and links",
+    "ثبت، اتصال و نصب پنل روی سرورها": "Add servers, connect, and install the panel",
+    "مدیریت دسترسی کاربران": "Manage user access",
+    "فوروارد و توزیع TCP روی مسیرهای تونلی": "Forward and balance TCP across tunnel paths",
+    "مدیریت خطوط پروکسی و فورواردهای آن‌ها": "Manage proxy lines and forwards",
+    "پیکربندی BGP و OSPF روی پیوندهای تونلی": "Configure BGP and OSPF over tunnel links",
+    "دامنه، گواهی TLS، ربات، به‌روزرسانی و امنیت حساب": "Domain, TLS certificate, bot, updates, and account security",
+    "در انتظار بررسی": "Waiting for check",
+    "HAProxy فعال روی": "HAProxy is active on",
+    "HAProxy نصب است · هنوز قانون فعالی نیست": "HAProxy is installed · no active rules",
+    "HAProxy نصب/فعال نیست روی": "HAProxy is not installed or running on",
+    "نامشخص": "Unknown",
+    "IP مقصد مسیر را وارد کن": "Enter a destination IP for this path",
+    "پشتیبان": "Backup",
+    "اصلی": "Primary",
+    "Failover · اصلی و پشتیبان": "Failover · primary and backup",
+    "کمترین اتصال": "Fewest connections",
+    "چرخشی": "Round robin",
+    "ثبات بر اساس IP مبدأ": "Source IP persistence",
+    "قطع": "Down",
+    "خطا": "Error",
+    "FRR نصب نیست": "FRR is not installed",
+    "در انتظار": "Pending",
+    "در حال اعمال تنظیمات روی هر دو سرور…": "Applying settings to both servers…",
+    "همسایگی روی هر دو سمت پیکربندی شد؛ وضعیت پس از برقراری peer به‌روزرسانی می‌شود.": "Neighbors are configured on both sides. Status will update after the peers connect.",
+    "ذخیره و اعمال": "Save and apply",
+    "حداقل یک مسیر تونلی انتخاب کن.": "Select at least one tunnel path.",
+    "در حال اعتبارسنجی و اعمال HAProxy روی سرور انتخاب‌شده…": "Validating and applying HAProxy on the selected server…",
+    "سرویس تونل روی دست‌کم یک سمت فعال نیست": "The tunnel service is not active on at least one side",
+    "فیروزه‌ای": "Teal",
+    "آبی": "Blue",
+    "سبز نعنایی": "Mint",
+    "کهربایی": "Amber",
+    "مرجانی": "Coral",
+    "رز": "Rose",
+    "بنفش": "Violet",
+    "یخی": "Ice",
+    "تم رنگی پنل": "Panel color theme",
+    "یک رنگ تأکیدی انتخاب کن؛ زمینه، متن و چیدمان پنل ثابت می‌مانند.": "Choose an accent color. The panel background, text, and layout will stay the same.",
+    "انتخاب تم رنگی": "Choose a color theme",
+    "بازگشت به رنگ پایه": "Reset to default color",
+    "ذخیرهٔ تم ناموفق بود؛ دوباره تلاش کن.": "Could not save the theme. Try again.",
+    "مسیریابی BGP/OSPF": "BGP/OSPF routing",
+    "HTTPS فعال ·": "HTTPS enabled ·",
+    "به‌روزرسانی پنل به": "Updating panel to",
+    "ذخیره و تمدید گواهی": "Save and renew certificate",
+    "سرور مرکزی": "Central server",
+    "تازه‌سازی": "Refresh",
+    "vless://… یا vmess://… یا trojan://…": "vless://…, vmess://…, or trojan://…",
+    "درخواست ناموفق بود": "Request failed",
+    "این صفحه باید از داخل Telegram باز شود.": "Open this page inside Telegram.",
+    "پنل مرکزی": "Central panel",
+    "اختلال فعال": "Active issue",
+    "نقش شما": "Your role",
+    "مشاهده‌گر": "Viewer",
+    "همه‌چیز پایدار": "Everything is stable",
+    "حداقل یکی از سمت‌های تونل پاسخ نمی‌دهد.": "At least one end of the tunnel is not responding.",
+    "اختلال": "Issue",
+    "تست اتصال": "Test connection",
+    "حذف": "Delete",
+    "هنوز سروری ثبت نشده است.": "No servers have been added yet.",
+    "تونلی برای نمایش وجود ندارد.": "No tunnels to display.",
+    "اطلاعات منابع هنوز آماده نیست.": "Resource data is not available yet.",
+    "فعال": "Enabled",
+    "متوقف": "Stopped",
+    "قانونی ثبت نشده است.": "No rules have been added.",
+    "مرکز عملیات": "Operations center",
+    "از اینجا وضعیت نسخه، پایش و کنترل‌های حساس را مدیریت کن. عملیات مخرب همیشه تأیید دوباره می‌خواهند.": "Manage version status, monitoring, and sensitive actions here. Destructive actions always require confirmation.",
+    "کنترل تونل‌ها": "Tunnel controls",
+    "پایش منابع": "Resource monitoring",
+    "به‌روز است": "Up to date",
+    "درخواست اجرا شد": "Action started",
+    "این عملیات فقط برای مدیر مجاز است": "Only administrators can perform this action",
+    "درخواست نصب ثبت شد": "Installation request submitted",
+    "سرور ثبت شد": "Server added",
+    "اتصال سرور برقرار است": "Server connection is working",
+    "مدیریت فورواردر فقط برای مدیر مجاز است": "Only administrators can manage forwards",
+    "قانون ساخته شد": "Rule created",
+    "وضعیت قانون تغییر کرد": "Rule status changed",
+    "قانون حذف شد": "Rule deleted",
+    "تم Mini App تغییر کرد": "Mini App theme changed",
+    "تست سرعت انجام نشد": "Speed test was not completed",
+    "برقرار": "Up",
+    "آنلاین": "Online",
+    "ترافیک ↓": "Traffic ↓",
+    "نمونه‌ی ": "Sample · ",
+    "شمار": "Count",
+    "بازسازی": "Restart",
+    "شروع": "Start",
+    "توقف": "Stop",
+    "شناسه": "ID",
+    "تونل": "Tunnel",
+    "ارسال PROXY در health check": "Send the PROXY protocol in health checks",
+    "بله": "Yes",
+    "وزن / نقش": "Weight / role",
+    "در حال خواندن تونل‌ها…": "Loading tunnels…",
+    "سرور شنود": "Listening server",
+    "شناسه فوروارد": "Forward ID",
+    "IP شنود": "Listening IP",
+    "مقصد سرور": "Destination server",
+    "مقصد": "Destination",
+    "خط": "Line",
+    "ASN سرور A": "Server A ASN",
+    "ASN سرور B": "Server B ASN",
+    "۱۰۰٪": "100%",
+    "خط Xray": "Xray line",
+    "ESP خام": "Native ESP",
+    "رابط مبدأ mirror": "Mirror source interface",
+    "زنده": "Live",
+    "منابع": "Resources",
+    "＋ افزودن": "＋ Add",
+    "فورواردرها": "Port forwards",
+    "کاربری ثبت نشده": "No users registered",
+    "گذرواژه جدید (حداقل ۱۲ نویسه):": "New password (at least 12 characters):",
+    "هر دو نشانی روی یک پورت هستند؛ HTTP بدون اجبار به HTTPS فعال می‌ماند.": "Both addresses use the same port; HTTP remains available without forcing HTTPS.",
+    "لبه‌ی تهران": "Tehran edge node",
+    "ERSPAN برای حمل ترافیک پورت‌فوروارد مناسب نیست": "ERSPAN is not suitable for carrying port-forwarded traffic.",
+    "GeoIP فقط برای IP عمومی قابل استفاده است": "GeoIP is available only for public IP addresses.",
+    "آدرس سرور نامعتبر است": "Invalid server address.",
+    "آدرس شنود باید IP همین سرور باشد": "The listening address must be an IP address assigned to this server.",
+    "آدرس شنود باید IPv4 یا IPv6 باشد": "The listening address must be IPv4 or IPv6.",
+    "الگوریتم پورت‌فوروارد نامعتبر است": "Invalid port-forwarding algorithm.",
+    "این شناسه از قبل ثبت شده است": "This ID is already registered.",
+    "این پورت در HAProxy همین سرور استفاده شده است": "This port is already in use by HAProxy on this server.",
+    "این پورت قبلاً برای خط پروکسی روی همین سرور استفاده شده است": "This port is already used by a proxy line on this server.",
+    "این کد قبلاً استفاده شده؛ کد تازه را وارد کن.": "This code has already been used. Enter a new code.",
+    "این کد قبلاً استفاده شده؛ کد تازه یا کد بازیابی را وارد کن.": "This code has already been used. Enter a new code or a recovery code.",
+    "برای SSH فقط یک مسیر پروکسی انتخاب کن": "Select only one proxy route for SSH.",
+    "برای این شناسه کلید مدیریتی وجود دارد؛ ابتدا سرور قبلی را از فهرست حذف کنید": "A management key already exists for this ID. Remove the previous server from the list first.",
+    "برای مدیر، ورود دومرحله‌ای اجباری است.": "Two-factor authentication is required for administrator accounts.",
+    "تم رنگی نامعتبر است": "Invalid color theme.",
+    "تنظیم گزارش منابع نامعتبر است": "Invalid resource-report settings.",
+    "تنظیمات بررسی سلامت نامعتبر است": "Invalid health-check settings.",
+    "حساب کاربری پیدا نشد": "User account not found.",
+    "خط پروکسی را انتخاب کن": "Select a proxy line.",
+    "خط پروکسی روی سرور مرکزی فعال نیست": "The proxy line is not active on the central server.",
+    "خط پروکسی نامعتبر است": "Invalid proxy line.",
+    "در حالت Failover دقیقاً یک مسیر را Primary انتخاب کن؛ بقیه مسیرها Backup هستند": "In Failover mode, choose exactly one Primary route. All other routes are Backup.",
+    "زنجیرهٔ پروکسی SSH بیش از یک مرحله پشتیبانی نمی‌شود": "SSH proxy chains support only one hop.",
+    "سرور شنود در فهرست مدیریت‌شده‌ها نیست": "The listening server is not in the managed-server list.",
+    "سرور پروکسی انتخابی خودش نباید از پروکسی دیگری عبور کند": "The selected proxy server cannot itself use another proxy.",
+    "سرور پروکسی باید از فهرست انتخاب شود و با مقصد فرق کند": "Choose a proxy server from the list. It must be different from the destination server.",
+    "سرور پروکسی باید از قبل ثبت شده باشد و با مقصد فرق کند": "The proxy server must already be registered and must differ from the destination.",
+    "سرور پروکسی نامعتبر است": "Invalid proxy server.",
+    "سرور پیدا نشد": "Server not found.",
+    "شمارهٔ پورت باید بین ۱ تا ۶۵۵۳۵ باشد": "The port number must be between 1 and 65535.",
+    "شناسه سرور تکراری است": "This server ID is already in use.",
+    "شناسه سرور نامعتبر است": "Invalid server ID.",
+    "شناسهٔ تونل نامعتبر است": "Invalid tunnel ID.",
+    "شناسهٔ سرور شنود نامعتبر است": "Invalid listening-server ID.",
+    "شناسهٔ فوروارد تکراری است": "This forward ID is already in use.",
+    "شناسهٔ فوروارد نامعتبر است": "Invalid forward ID.",
+    "شناسهٔ قانون نامعتبر است": "Invalid rule ID.",
+    "شناسهٔ پورت‌فوروارد نامعتبر است": "Invalid port-forward ID.",
+    "عملیات MFA نامعتبر است.": "Invalid MFA action.",
+    "عملیات به‌روزرسانی نامعتبر است.": "Invalid update action.",
+    "عملیات خط پروکسی نامعتبر است": "Invalid proxy-line action.",
+    "عملیات سرور ناشناخته است": "Unknown server action.",
+    "عملیات فوروارد خط پروکسی نامعتبر است": "Invalid proxy-line forwarding action.",
+    "عملیات فوروارد نامعتبر است": "Invalid forwarding action.",
+    "عملیات پورت‌فوروارد نامعتبر است": "Invalid port-forwarding action.",
+    "فایل کلید SSH پیدا نشد یا قابل‌خواندن نیست": "The SSH key file was not found or cannot be read.",
+    "فایل کلید خصوصی SSH معتبر نیست": "The SSH private-key file is invalid.",
+    "فوروارد روی این سرور پیدا نشد": "Forward not found on this server.",
+    "قانون پورت‌فوروارد روی این سرور پیدا نشد": "Port-forward rule not found on this server.",
+    "مسیر تونلی تکراری انتخاب شده است": "The same tunnel route was selected more than once.",
+    "مسیر تونلی نامعتبر است": "Invalid tunnel route.",
+    "مهلت راه‌اندازی تمام شده؛ دوباره شروع کن.": "The setup session has expired. Start again.",
+    "موقعیت سرور باید ایران یا خارج باشد": "Server location must be Iran or Abroad.",
+    "نام میزبان به IP تبدیل نشد؛ آدرس را بررسی کن": "The hostname could not be resolved to an IP address. Check the address.",
+    "نام کاربری SSH نامعتبر است": "Invalid SSH username.",
+    "نقش مسیر باید primary یا backup باشد": "Route role must be Primary or Backup.",
+    "نوع اتصال باید TCP یا UDP باشد": "Connection type must be TCP or UDP.",
+    "ورود دومرحله‌ای از قبل فعال است؛ کدهای بازیابی را بچرخان یا از مدیر بخواه آن را بازنشانی کند.": "Two-factor authentication is already enabled. Regenerate the recovery codes or ask an administrator to reset it.",
+    "ورود دومرحله‌ای برای این حساب فعال نیست.": "Two-factor authentication is not enabled for this account.",
+    "وزن مسیر باید بین ۱ تا ۲۵۶ باشد": "Route weight must be between 1 and 256.",
+    "وضعیت فعال بودن قانون نامعتبر است": "Invalid rule status.",
+    "پروتکل PROXY نامعتبر است": "Invalid PROXY protocol.",
+    "پورت‌ها باید بین ۱ تا ۶۵۵۳۵ باشند": "Ports must be between 1 and 65535.",
+    "کد برنامه درست نیست یا ساعت دستگاه هماهنگ نیست.": "The authenticator code is incorrect, or the device clock is out of sync.",
+    "کد برنامه درست نیست یا قبلاً استفاده شده.": "The authenticator code is incorrect or has already been used.",
+    "کد نادرست است یا قبلاً استفاده شده.": "The code is incorrect or has already been used.",
+    "کلید مدیریتی عمومی قابل‌خواندن نیست؛ کلید SSH را دوباره ثبت کن یا گذرواژه را خالی بگذار": "The public management key cannot be read. Register the SSH key again or leave the password empty.",
+    "گذرواژه SSH بیش از حد طولانی است": "The SSH password is too long.",
+    "گذرواژه SSH نامعتبر است": "Invalid SSH password.",
+    "گذرواژهٔ SSH یا کلید خصوصی را وارد کن": "Enter an SSH password or private key.",
+    "گذرواژهٔ فعلی درست نیست.": "The current password is incorrect.",
+    "گزینهٔ GeoIP نامعتبر است": "Invalid GeoIP option.",
+    "یک تا ۳۲ مسیر تونلی انتخاب کن": "Select between 1 and 32 tunnel routes.",
+    "نقش": "Role",
+    "وزن": "Weight",
+    "ویرایش": "Edit",
+    "عملیات تونل": "Tunnel actions",
+    "ویرایش تنظیمات": "Edit settings",
+    "شروع هر دو سمت": "Start both sides",
+    "بازسازی و راه‌اندازی مجدد هر دو سمت": "Rebuild and restart both sides",
+    "سنجش و اعمال MTU": "Measure and apply MTU",
+    "توقف هر دو سمت": "Stop both sides",
+    "حذف هر دو سمت": "Delete both sides",
+    "داخلی:": "Internal:",
+    "خط‌ها · فورواردها": "Lines · forwards",
+    "ارتباط‌های نقشه": "Map connections",
+    "هنوز مسیر یا خطی برای نمایش ثبت نشده است.": "No routes or lines to show yet.",
+    "گره انتخاب‌شده": "Selected node",
+    "وضعیت اتصال · تونل‌ها": "Connection status · tunnels",
+    "بدون تونل": "No tunnels",
+    "بدون نوع تونل": "No tunnel type",
+    "تست دستی": "Manual test",
+    "سرور مرکزی · پنل": "Central server · panel",
+    "هنوز پیوند تونلی در شبکه ثبت نشده است.": "No tunnel links have been added to the network yet.",
+    "تغییر گذرواژه": "Change password",
+    "لغو دسترسی": "Revoke access",
+    "فقط مشاهده": "View only",
+    "● متوقف · تداخل SIT": "● Stopped · SIT conflict",
+    "● متوقف": "● Stopped",
+    "تونل ساخته شد": "Tunnel created",
+    "تونل به‌روزرسانی شد": "Tunnel updated",
+    "سرور ثبت و پنل نصب شد.": "Server added and the panel installed.",
+    "این نسخه TCP را مدیریت می‌کند. پورت شنود فقط هنگام ذخیرهٔ قانون باز می‌شود. برای مقصد، برنامه باید روی IP داخلی peer، IP خصوصی‌ای که از قبل از طریق مسیرهای سرور قابل‌دسترسی است، یا مقصدی که مسیرش از رابط TUN/IPX عبور می‌کند گوش کند؛ مسیر IPX هنگام اعمال قانون بررسی می‌شود.": "This version manages TCP. The listening port opens only when you save the rule. The destination application must listen on the peer’s internal IP, a private IP already reachable through server routes, or an address routed through the TUN/IPX interface. IPX routes are checked when the rule is applied.",
+    "برای تغییر نقش:": "To change the role:",
+    "برای ساخت مدیر نخست روی همین سرور اجرا کنید:": "To create the first administrator, run this on the server:",
+    "برای گذرواژهٔ تازه:": "For a new password:",
+    "حجم تبادل": "Traffic transferred",
+    "پنل شناسه‌های tunnel و session را تصادفی می‌سازد و پیش از ساخت، پورت UDP تصادفی را روی هر دو endpoint با bind آزمایشی بررسی می‌کند؛ پورت‌های آزاد بیرون بازهٔ ephemeral ترجیح دارند. بعد از ساخت، پورت‌ها را در فایروال دو سر باز کن.": "The panel generates random tunnel and session IDs. Before creation, it tests a random UDP port by binding it on both endpoints; free ports outside the ephemeral range are preferred. After creation, allow the ports through both firewalls.",
+    "در حال نصب نسخهٔ جدید؛ این صفحه وضعیت نصب را دنبال می‌کند.": "Installing the new version; this page will track the installation.",
+    "نصب به‌روزرسانی ناموفق بود.": "The update could not be installed.",
+    "نصب هنوز در حال اجراست؛ وضعیت را کمی بعد دوباره بررسی کن.": "Installation is still running; check its status again shortly.",
+    "پنل هنگام نصب راه‌اندازی مجدد می‌شود؛ در حال اتصال دوباره…": "The panel is restarting during installation; reconnecting…",
+    "↑ به کاربران": "↑ Sent",
+    "فهرست تونل‌های سرور انتخاب‌شده معتبر نیست": "The selected server tunnel list is invalid.",
+    "هیچ مسیر تونلی معتبری باقی نمانده؛ قانون HAProxy را حذف یا مسیر تازه اضافه کن": "No valid tunnel routes remain; remove the HAProxy rule or add another route."
+  },
+  "patterns": [
+    {
+      "pattern": "^(\\d+) مورد نیازمند توجه$",
+      "replace": "$1 item(s) need attention"
+    },
+    {
+      "pattern": "^نسخه فعلی (.+) · آخرین نسخه (.+) · (.+)$",
+      "replace": "Current version $1 · Latest version $2 · $3"
+    },
+    {
+      "pattern": "^نسخهٔ (.+) نصب شود؟ پنل هنگام به‌روزرسانی کوتاهاً راه‌اندازی مجدد می‌شود\\.$",
+      "replace": "Install version $1? The panel will restart briefly during the update."
+    },
+    {
+      "pattern": "^سلام (.+)؛ شبکه‌ات آماده‌ی پایش است\\.$",
+      "replace": "Hello $1, your network is ready to monitor."
+    },
+    {
+      "pattern": "^دسترسی به (.+) قطع است\\.$",
+      "replace": "Cannot reach $1."
+    },
+    {
+      "pattern": "^(\\d+) تونل$",
+      "replace": "$1 tunnels"
+    },
+    {
+      "pattern": "^تونل (.+) حذف شود؟$",
+      "replace": "Delete tunnel $1?"
+    },
+    {
+      "pattern": "^سرور (.+) حذف شود؟$",
+      "replace": "Delete server $1? This action cannot be undone."
+    },
+    {
+      "pattern": "^قانون (.+) حذف شود؟$",
+      "replace": "Delete rule $1?"
+    },
+    {
+      "pattern": "^ورود دومرحله‌ای (.+) بازنشانی شود؟ نشست‌های او لغو می‌شوند\\.$",
+      "replace": "Reset two-factor authentication for $1? Their sessions will be revoked."
+    },
+    {
+      "pattern": "^نسخهٔ فعلی (.+) · نسخهٔ GitHub (.+)$",
+      "replace": "Current version $1 · GitHub version $2"
+    },
+    {
+      "pattern": "^نسخهٔ (.+) از GitHub آماده است؛ نسخهٔ فعلی پنل (.+) است\\.$",
+      "replace": "Version $1 is available on GitHub; the panel is currently on $2."
+    },
+    {
+      "pattern": "^نسخهٔ (.+) نصب شود؟ پنل هنگام به‌روزرسانی برای چند لحظه دوباره راه‌اندازی می‌شود\\.$",
+      "replace": "Install version $1? The panel will restart briefly during the update."
+    },
+    {
+      "pattern": "^(\\d+) تم$",
+      "replace": "$1 themes"
+    },
+    {
+      "pattern": "^(\\d+) سرور · (\\d+) مسیر$",
+      "replace": "$1 servers · $2 paths"
+    },
+    {
+      "pattern": "^مکان GeoIP برای (\\d+) سرور هنوز مشخص نشده است؛ اگر تازه ثبت شده، چند لحظه بعد دوباره بررسی می‌شود\\.$",
+      "replace": "GeoIP location is not available for $1 servers yet. If they were just added, check again shortly."
+    },
+    {
+      "pattern": "^HTTPS فعال · (.+)$",
+      "replace": "HTTPS enabled · $1"
+    },
+    {
+      "pattern": "^HAProxy فعال روی (.+)$",
+      "replace": "HAProxy is active on $1"
+    },
+    {
+      "pattern": "^HAProxy نصب/فعال نیست روی (.+)$",
+      "replace": "HAProxy is not installed or running on $1"
+    },
+    {
+      "pattern": "^نمونه‌ی (.+)$",
+      "replace": "Sample · $1"
+    },
+    {
+      "pattern": "^داشبورد زنده‌ی شبکه‌ات آماده است\\.$",
+      "replace": "Your live network dashboard is ready."
+    },
+    {
+      "pattern": "^MTU مسیر اندازه‌گیری شد: (.+)$",
+      "replace": "Path MTU measured: $1"
+    },
+    {
+      "pattern": "^موقعیت تشخیص‌داده‌شده: (.+) · (.+) · (.+)$",
+      "replace": "Detected location: $1 · $2 · $3"
+    },
+    {
+      "pattern": "^موقعیت با GeoIP: (.+) · (.+)\\.$",
+      "replace": "GeoIP location: $1 · $2."
+    },
+    {
+      "pattern": "^GeoIP تشخیص نداد: (.+)$",
+      "replace": "GeoIP could not detect the location: $1"
+    },
+    {
+      "pattern": "^GeoIP در دسترس نبود؛ موقعیت انتخابی حفظ شد \\((.+)\\)\\.$",
+      "replace": "GeoIP is unavailable. The selected location was kept ($1)."
+    },
+    {
+      "pattern": "^خط (.+) حذف شود؟$",
+      "replace": "Delete line $1?"
+    },
+    {
+      "pattern": "^فوروارد (.+) حذف شود؟$",
+      "replace": "Delete forward $1?"
+    },
+    {
+      "pattern": "^تونل (.+) روی هر دو سرور ساخته و اجرا شد\\..*$",
+      "replace": "Tunnel $1 was created and started on both servers."
+    },
+    {
+      "pattern": "^تونل (.+) روی هر دو سرور ثبت و فعال است\\..*$",
+      "replace": "Tunnel $1 is configured and active on both servers."
+    },
+    {
+      "pattern": "^تداخل SIT با تونل فعال (.+)$",
+      "replace": "SIT conflicts with active tunnel $1"
+    },
+    {
+      "pattern": "^نسخه (.+) نصب شود؟ پنل هنگام به‌روزرسانی کوتاهاً راه‌اندازی مجدد می‌شود\\.$",
+      "replace": "Install version $1? The panel will restart briefly during the update."
+    },
+    {
+      "pattern": "^(بازسازی|شروع|توقف) تونل (.+) اجرا شود؟$",
+      "replace": "Run $1 for tunnel $2?"
+    },
+    {
+      "pattern": "^تونل (.+)$",
+      "replace": "Tunnel $1"
+    },
+    {
+      "pattern": "^سرور (.+) حذف شود؟$",
+      "replace": "Delete server $1?"
+    },
+    {
+      "pattern": "^سرور (.+) حذف شود؟ این کار قابل بازگشت نیست\\.$",
+      "replace": "Delete server $1? This action cannot be undone."
+    },
+    {
+      "pattern": "^سرور (.+) از فهرست حذف شود؟$",
+      "replace": "Remove server $1 from the list?"
+    },
+    {
+      "pattern": "^نسخهٔ (.+) از GitHub نصب شود؟ پنل هنگام به‌روزرسانی برای چند لحظه دوباره راه‌اندازی می‌شود\\.$",
+      "replace": "Install version $1 from GitHub? The panel will restart briefly during the update."
+    },
+    {
+      "pattern": "^IP\\ داخلی\\ peer\\ در\\ تونل\\ (.+)\\ نامعتبر\\ است$",
+      "replace": "The peer internal IP for tunnel $1 is invalid."
+    },
+    {
+      "pattern": "^IP\\ مقصد\\ برای\\ تونل\\ (.+?)\\ باید\\ از\\ نوع\\ (.+)\\ باشد$",
+      "replace": "The destination IP for tunnel $1 must be IPv$2."
+    },
+    {
+      "pattern": "^IP\\ مقصد\\ برای\\ تونل\\ (.+)\\ نامعتبر\\ است$",
+      "replace": "The destination IP for tunnel $1 is invalid."
+    },
+    {
+      "pattern": "^برای\\ مسیر\\ IPX\\ تونل\\ (.+)،\\ IP\\ مقصد\\ قابل‌دسترسی\\ از\\ رابط\\ TUN\\ را\\ وارد\\ کن$",
+      "replace": "For the IPX route of tunnel $1, enter a destination IP reachable through the TUN interface."
+    },
+    {
+      "pattern": "^تونل\\ (.+)\\ آدرس\\ داخلی\\ peer\\ ندارد$",
+      "replace": "Tunnel $1 has no peer internal IP address."
+    },
+    {
+      "pattern": "^تونل\\ (.+)\\ روی\\ سرور\\ انتخاب‌شده\\ پیدا\\ نشد$",
+      "replace": "Tunnel $1 was not found on the selected server."
+    },
+    {
+      "pattern": "^خواندن\\ تنظیم\\ تونل\\ (.+?)\\ ناموفق\\ بود:\\ (.+)$",
+      "replace": "Could not read the settings for tunnel $1: $2"
+    },
+    {
+      "pattern": "^وضعیت\\ تونل‌های\\ سرور\\ (.+?)\\ بررسی\\ نشد؛\\ برای\\ جلوگیری\\ از\\ باقی‌ماندن\\ IP\\ قدیمی،\\ تغییر\\ اتصال\\ برگردانده\\ شد:\\ (.+)$",
+      "replace": "Could not check tunnel status on server $1. The connection change was rolled back to avoid leaving an old IP behind: $2"
+    },
+    {
+      "pattern": "^کلید\\ خصوصی\\ را\\ داخل\\ مسیر\\ دادهٔ\\ پنل\\ قرار\\ بده:\\ (.+)/ssh\\-keys$",
+      "replace": "Place the private key under the panel data directory: $1/ssh-keys"
+    },
+    {
+      "pattern": "^خطای\\ (.+)$",
+      "replace": "Error $1"
+    },
+    {
+      "pattern": "^نسخهٔ\\ (.+)\\ نصب\\ است\\.$",
+      "replace": "Version $1 is installed."
+    },
+    {
+      "pattern": "^وزن\\ تونل\\ (.+)$",
+      "replace": "Tunnel weight: $1"
+    },
+    {
+      "pattern": "^IP\\ مقصد\\ مسیر\\ (.+)$",
+      "replace": "Destination IP for route $1"
+    },
+    {
+      "pattern": "^عملیات\\ تونل\\ (.+)\\ روی\\ همه\\ سرورها$",
+      "replace": "Actions for tunnel $1 on all servers"
+    },
+    {
+      "pattern": "^ویرایش\\ تونل\\ (.+)$",
+      "replace": "Edit tunnel $1"
+    },
+    {
+      "pattern": "^تنظیم\\ مسیریابی\\ (.+)\\ از\\ دو\\ سمت\\ حذف\\ شود؟$",
+      "replace": "Delete routing configuration $1 from both ends?"
+    },
+    {
+      "pattern": "^(.+)\\ مسیر$",
+      "replace": "$1 route(s)"
+    },
+    {
+      "pattern": "^پینگ\\ (.+)\\ ms$",
+      "replace": "Ping: $1 ms"
+    },
+    {
+      "pattern": "^خط\\ (.+?)\\ ·\\ (.+?)\\ ·\\ (.+?):(.+)$",
+      "replace": "Line $1 · $2 · $3:$4"
+    },
+    {
+      "pattern": "^(.+?)\\ →\\ خط\\ (.+)$",
+      "replace": "$1 → line $2"
+    },
+    {
+      "pattern": "^خط\\ پروکسی\\ ·\\ (.+)\\ مسیر$",
+      "replace": "Proxy line · $1 route(s)"
+    },
+    {
+      "pattern": "^(.+?)\\ ارتباط\\ ·\\ (.+)$",
+      "replace": "$1 connections · $2"
+    },
+    {
+      "pattern": "^(.+?)\\ ·\\ (.+)\\ تونل$",
+      "replace": "$1 · $2 tunnel(s)"
+    },
+    {
+      "pattern": "^مقدار\\ MTU\\ سنجیده‌شده\\ معتبر\\ نیست:\\ (.+)$",
+      "replace": "The measured MTU is invalid: $1"
+    },
+    {
+      "pattern": "^در\\ حال\\ سنجش\\ مسیر\\ و\\ اعمال\\ MTU\\ تونل\\ (.+?)\\ ·\\ (.+?)\\ از\\ (.+)\\ ·\\ سقف\\ ۱۴۰۰$",
+      "replace": "Measuring the path and applying MTU for tunnel $1 · $2 of $3 · maximum 1400"
+    },
+    {
+      "pattern": "^در\\ حال\\ سنجش\\ مسیر\\ و\\ اعمال\\ MTU\\ تونل\\ (.+?)\\ ·\\ (.+?)\\ از\\ (.+?)\\ (.+?)\\ موفق\\ ·\\ (.+)\\ ناموفق$",
+      "replace": "Measuring the path and applying MTU for tunnel $1 · $2 of $3 · $4 succeeded · $5 failed"
+    },
+    {
+      "pattern": "^پایان\\ سنجش\\ MTU\\ همهٔ\\ تونل‌ها\\ ·\\ (.+?)\\ موفق\\ ·\\ (.+)\\ ناموفق$",
+      "replace": "MTU measurement complete for all tunnels · $1 succeeded · $2 failed"
+    },
+    {
+      "pattern": "^✓\\ (.+?):\\ MTU\\ (.+)\\ روی\\ دو\\ سمت\\ اعمال\\ شد$",
+      "replace": "✓ $1: MTU $2 applied on both sides"
+    },
+    {
+      "pattern": "^✗\\ (.+?):\\ (.+)$",
+      "replace": "✗ $1: $2"
+    },
+    {
+      "pattern": "^·\\ سرعت\\ تقریبی\\ A→B\\ (.+?)\\ و\\ B→A\\ (.+)\\ Mbps$",
+      "replace": "· Approximate speed A→B $1 and B→A $2 Mbps"
+    },
+    {
+      "pattern": "^·\\ تست\\ سرعت\\ انجام\\ نشد:\\ (.+)$",
+      "replace": "· Speed test failed: $1"
+    },
+    {
+      "pattern": "^MTU\\ پیشنهادی\\ (.+?)\\ ·\\ مسیرها\\ (.+?)/(.+?)\\ ·\\ سربار\\ (.+?)\\ ·\\ (.+?)/(.+)$",
+      "replace": "Suggested MTU $1 · paths $2/$3 · overhead $4 · $5/$6"
+    },
+    {
+      "pattern": "^OpenConnect\\ ساخته\\ شد\\ ·\\ pool\\ (.+?)\\ ·\\ پورت\\ TCP/UDP\\ (.+)\\ را\\ در\\ فایروال\\ سمت\\ سرور\\ باز\\ کن\\.\\ پنجره\\ را\\ خودت\\ ببند\\.$",
+      "replace": "OpenConnect created · pool $1 · open TCP/UDP port $2 in the server firewall. Close this window when you are done."
+    },
+    {
+      "pattern": "^OpenVPN\\ ساخته\\ شد\\ ·\\ پورت\\ UDP\\ (.+)\\ را\\ در\\ فایروال\\ سرور\\ شنونده\\ و\\ ارائه‌دهنده\\ باز\\ کن\\.\\ پنجره\\ را\\ خودت\\ ببند\\.$",
+      "replace": "OpenVPN created · open UDP port $1 in the listening server and provider firewalls. Close this window when you are done."
+    },
+    {
+      "pattern": "^WireGuard\\ ساخته\\ شد\\ ·\\ پورت\\ UDP\\ (.+)\\ را\\ در\\ فایروال\\ هر\\ دو\\ سرور\\ و\\ فایروال\\ ارائه‌دهنده\\ باز\\ کن\\.\\ پنجره\\ را\\ خودت\\ ببند\\.$",
+      "replace": "WireGuard created · open UDP port $1 in both server firewalls and the provider firewall. Close this window when you are done."
+    },
+    {
+      "pattern": "^·\\ پورت‌های\\ UDP\\ (.+)\\ را\\ در\\ فایروال\\ دو\\ سر\\ باز\\ کن$",
+      "replace": "· Open UDP ports $1 on both ends"
+    },
+    {
+      "pattern": "^به‌روزرسانی\\ پنل\\ به\\ (.+)$",
+      "replace": "Update panel to $1"
+    },
+    {
+      "pattern": "^گزارش\\ تلگرام\\ ·\\ (.+?)\\ ·\\ (.+)\\ شاخص$",
+      "replace": "Telegram report · $1 · $2 metrics"
+    },
+    {
+      "pattern": "^(.+?)\\ تونل\\ ·\\ (.+)$",
+      "replace": "$1 tunnel · $2"
+    },
+    {
+      "pattern": "^هر\\ دو\\ سر\\ تونل\\ (.+)\\ حذف\\ شوند؟$",
+      "replace": "Delete both ends of tunnel $1?"
+    },
+    {
+      "pattern": "^عملیات\\ ناموفق\\ بود:\\ (.+)$",
+      "replace": "Operation failed: $1"
+    },
+    {
+      "pattern": "^به‌روزرسانی\\ به\\ (.+)$",
+      "replace": "Update to $1"
+    },
+    {
+      "pattern": "^به‌روزرسانی\\ ·\\ حدود\\ (.+)٪$",
+      "replace": "Updating · about $1%"
+    },
+    {
+      "pattern": "^نسخهٔ\\ (.+)\\ روی\\ سرور\\ نصب\\ و\\ تأیید\\ شد\\.\\ پنل\\ و\\ سرور\\ اکنون\\ هم‌نسخه‌اند\\.$",
+      "replace": "Version $1 was installed and verified on the server. The panel and server are now in sync."
+    },
+    {
+      "pattern": "^فایل‌های\\ پنل\\ به\\ نسخهٔ\\ (.+?)\\ رسیده‌اند\\ و\\ این\\ نسخه\\ تأیید\\ شد؛\\ اما\\ نصب‌کننده\\ هنگام\\ راه‌اندازی\\ (.+)\\ خطا\\ گزارش\\ کرد\\.\\ خود\\ پنل\\ به‌روز\\ است\\.\\ جزئیات\\ فنی\\ خطا\\ را\\ می‌توانی\\ باز\\ کنی\\.$",
+      "replace": "The panel files were updated to $1 and verified, but the installer reported an error while starting $2. The panel itself is up to date. You can open the technical details."
+    },
+    {
+      "pattern": "^(.+?)\\ ·\\ نسخهٔ\\ فعلی\\ (.+)$",
+      "replace": "$1 · current version $2"
+    },
+    {
+      "pattern": "^نسخهٔ\\ مورد\\ انتظار\\ (.+?)\\ است\\ اما\\ نسخهٔ\\ فعلی\\ سرور\\ (.+?)\\ گزارش\\ می‌شود\\.\\ اتصال\\ SSH\\ و\\ سرویس\\ پنل\\ را\\ بررسی\\ کن\\ و\\ سپس\\ دوباره\\ «به‌روزرسانی\\ به\\ (.+)»\\ را\\ بزن\\.$",
+      "replace": "Expected version: $1, but the server reports $2. Check the SSH connection and panel service, then select “Update to $1” again."
+    },
+    {
+      "pattern": "^GeoIP\\ انجام\\ نشد:\\ (.+)\\ ·\\ موقعیت\\ را\\ دستی\\ انتخاب\\ کن\\.$",
+      "replace": "GeoIP lookup failed: $1 · Select the location manually."
+    },
+    {
+      "pattern": "^IP\\ سرور\\ عوض\\ می‌شود؛\\ تنظیمات\\ (.+)\\ تونل\\ مرتبط\\ در\\ هر\\ دو\\ سمت\\ اعمال\\ و\\ endpointهایشان\\ restart\\ می‌شوند\\.\\ ادامه\\ می‌دهی؟$",
+      "replace": "The server IP will change. Settings for $1 related tunnel(s) will be applied on both ends and their endpoints restarted. Continue?"
+    },
+    {
+      "pattern": "^اتصال\\ ذخیره\\ شد\\.\\ (.+?)\\ تونل\\ به‌روزرسانی\\ و\\ (.+?)\\ سمت\\ راه‌اندازی\\ مجدد\\ شد\\.(.+)$",
+      "replace": "Connection saved. Updated $1 tunnel(s) and restarted $2 endpoint(s).$3"
+    },
+    {
+      "pattern": "^سرور\\ ثبت\\ و\\ پنل\\ نصب\\ شد\\.(.+)$",
+      "replace": "Server added and the panel installed.$1"
+    },
+    {
+      "pattern": "^نسخهٔ\\ (.+)\\ از\\ GitHub\\ نصب\\ است\\.$",
+      "replace": "GitHub version $1 is installed."
+    },
+    {
+      "pattern": "^نسخهٔ\\ (.+?)\\ از\\ GitHub\\ آماده\\ است؛\\ نسخهٔ\\ فعلی\\ پنل\\ (.+)\\ است\\.$",
+      "replace": "Version $1 is available on GitHub; the panel is currently on $2."
+    },
+    {
+      "pattern": "^شناسهٔ\\ (.+?)\\ از\\ قبل\\ روی\\ (.+)\\ وجود\\ دارد؛\\ ابتدا\\ همان\\ تونل\\ را\\ بررسی\\ یا\\ حذف\\ کن\\.$",
+      "replace": "Tunnel ID $1 already exists on $2. Check or delete that tunnel first."
+    },
+    {
+      "pattern": "^دسترسی\\ (.+)\\ لغو\\ شود؟$",
+      "replace": "Revoke access for $1?"
+    },
+    {
+      "pattern": "^(.+?)\\ از\\ (.+)$",
+      "replace": "$1 of $2"
+    },
+    {
+      "pattern": "^تونل\\ ساخته\\ شد\\ ·\\ رابط\\ (.+?)\\ ·\\ IPهای\\ داخلی\\ (.+?)\\ ⇄\\ (.+?)\\ ·\\ وضعیت\\ هر\\ دو\\ سمت\\ بررسی\\ شد(.+)$",
+      "replace": "Tunnel created · interface $1 · internal IPs $2 ⇄ $3 · both ends checked$4"
+    },
+    {
+      "pattern": "^تونل\\ به‌روزرسانی\\ شد\\ ·\\ رابط\\ (.+?)\\ ·\\ IPهای\\ داخلی\\ (.+?)\\ ⇄\\ (.+?)\\ ·\\ وضعیت\\ هر\\ دو\\ سمت\\ بررسی\\ شد(.+)$",
+      "replace": "Tunnel updated · interface $1 · internal IPs $2 ⇄ $3 · both ends checked$4"
+    },
+    {
+      "pattern": "^\\ ·\\ VNI\\ (.+?)\\ ·\\ UDP\\ (.+?)\\ را\\ در\\ فایروال\\ دو\\ سر\\ باز\\ کن(.+)$",
+      "replace": "· VNI $1 · open UDP port $2 on both firewalls$3"
+    },
+    {
+      "pattern": "^\\ ·\\ پورت‌های\\ UDP\\ (.+?)\\ را\\ در\\ فایروال\\ دو\\ سر\\ باز\\ کن(.+)$",
+      "replace": "· open UDP ports $1 on both firewalls$2"
+    },
+    {
+      "pattern": "^· موقعیت تشخیص‌داده‌شده: (.+) · (.+) · (.+)\\.?$",
+      "replace": "· Detected location: $1 · $2 · $3"
+    },
+    {
+      "pattern": "^· سرعت تقریبی A→B (.+) و B→A (.+) Mbps\\.?$",
+      "replace": "· Approximate speed A→B $1 and B→A $2 Mbps"
+    },
+    {
+      "pattern": "^· تست سرعت انجام نشد: (.+)\\.?$",
+      "replace": "· Speed test failed: $1"
+    }
+  ]
+}

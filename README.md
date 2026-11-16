@@ -1,6 +1,6 @@
 # avaTUN | tunnel manager web panel
 
-**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 2.0.0.**
+**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 2.0.1.**
 
 avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید.
 
@@ -22,7 +22,7 @@ sudo bash scripts/install-from-github.sh
 
 اسکریپت آغاز نصب، فایل ریلیز را تا پیش از تأیید attestation امضاشدهٔ GitHub Actions اجرا نمی‌کند. سپس پیش‌نیازها را نصب می‌کند و نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
-نسخهٔ پایدار avaTUN 2.0.0 است؛ این نسخه خط پایهٔ پایدار پروژه پس از بازبینی و پاک‌سازی قابلیت‌های آزمایشی است. حجم دریافتی، ارسالی و مجموع تبادل هر تونل و هر پورت HA در پنل و Telegram Mini App نمایش داده می‌شود. HTTPS به‌صورت پیش‌فرض با گواهی خودامضا فعال است؛ برای حذف هشدار مرورگر، از تنظیمات پنل گواهی معتبر دامنه نصب کنید.
+نسخهٔ پایدار avaTUN 2.0.1 است. پنل به‌صورت پیش‌فرض از HTTP قابل‌استفاده است و برای فعال‌کردن HTTPS می‌توانی از تنظیمات، گواهی دامنه نصب کنی. اگر گواهی TLS آماده باشد، درخواست‌های HTTP به نشانی امن آن هدایت می‌شوند. ورود دومرحله‌ای (TOTP) همچنان به HTTPS نیاز دارد.
 
 ### English
 
@@ -54,7 +54,7 @@ python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
 ```
 
-Passwords are stored with salted scrypt hashes. The browser uses an HttpOnly session cookie. The packaged systemd service listens on all interfaces at port 8765, but remote cleartext requests are refused until HTTPS is configured. For first setup, open an SSH tunnel with `ssh -L 8765:127.0.0.1:8765 user@SERVER` and visit `http://127.0.0.1:8765`; then configure a domain and issue a Let's Encrypt certificate under **Settings → TLS certificate**. After the certificate is ready, browser and API requests over HTTP are redirected to HTTPS, HSTS is enabled, and the session cookie is marked Secure. The local health endpoint remains available to the updater. Keep TCP/80 reachable for certificate issuance and renewal.
+Passwords are stored with salted scrypt hashes. The browser uses an HttpOnly session cookie. The packaged systemd service listens on all interfaces at port 8765. Remote HTTP works by default when panel TLS is not configured, so an SSH tunnel is optional. To enable HTTPS, configure a domain and issue a Let's Encrypt certificate under **Settings → TLS certificate**; once ready, HTTP requests redirect to its HTTPS address. HSTS and Secure session cookies are used over TLS. TOTP setup and login require HTTPS. The local health endpoint remains available to the updater. Keep TCP/80 reachable for certificate issuance and renewal.
 
 The unified tunnel form lists Backhaul TUN, GRE, IPIP, GRETAP, Geneve, VXLAN, ERSPAN, 6to4, ISATAP, GRE/IPIP/SIT FoU, L2TPv3, IPsec/ESP modes, WireGuard, OpenVPN, and OpenConnect. Select direct or reverse for the endpoint role. The WireGuard, OpenVPN, and OpenConnect pair actions create coordinated endpoint configurations with per-side keys/certificates and peer addresses. OpenConnect uses ocserv and a fixed point-to-point `/31` address pair. Add Linux servers with SSH access to install or update the manager and control tunnel endpoints. During enrollment, the SSH password can bootstrap a per-server key and is then discarded; it is never stored. Uploaded or generated SSH keys are stored with mode `0600` under the controller data directory (for the installed service, `/var/lib/tunnelmgr/ssh-keys`). The health worker pings the configured peer through its tunnel interface every ten seconds. ERSPAN is reported as monitor-only because it mirrors traffic instead of carrying a bidirectional IP link.
 
