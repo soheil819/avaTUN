@@ -124,10 +124,13 @@ PYTHON_CRYPTO_STATUS=$(dpkg-query -W -f='${Status}' python3-cryptography 2>/dev/
 case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-cryptography" ;; esac
 PYTHON_SNAPPY_STATUS=$(dpkg-query -W -f='${Status}' python3-snappy 2>/dev/null || true)
 case "$PYTHON_SNAPPY_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-snappy" ;; esac
-if [ -n "$PACKAGES" ]; then
+if [ -n "$PACKAGES" ] || [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
     command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES
+    if [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
+        python3 "$ROOT/scripts/sync-dependencies.py" "$ROOT/runtime/slave-package-lock.json"
+    fi
+    if [ -n "$PACKAGES" ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES; fi
 fi
 
 # On hosts where /usr/lib/ipsec is linked into another StrongSwan installation,
@@ -257,7 +260,7 @@ install -d -o root -g root -m 0700 /etc/tunnelmgr/openvpn
 install -d -o root -g root -m 0700 /etc/tunnelmgr/openconnect
 install -d -m 0700 /etc/tunnelmgr/mesh
 install -d -m 0755 /opt/tunnelmgr/scripts
-install -m 0755 "$ROOT/scripts/mesh-worker.py" "$ROOT/scripts/mesh-deploy.py" "$ROOT/scripts/github-update.py" "$ROOT/scripts/install-preview.sh" "$ROOT/scripts/tunnelmgr" /opt/tunnelmgr/scripts/
+install -m 0755 "$ROOT/scripts/mesh-worker.py" "$ROOT/scripts/mesh-deploy.py" "$ROOT/scripts/github-update.py" "$ROOT/scripts/sync-dependencies.py" "$ROOT/scripts/install-preview.sh" "$ROOT/scripts/tunnelmgr" /opt/tunnelmgr/scripts/
 install -d -o root -g root -m 0755 /opt/tunnelmgr/vendor/backhaul/bin /opt/tunnelmgr/vendor/backhaul/scripts
 install -o root -g root -m 0755 "$ROOT/vendor/backhaul/bin/backhaul" /opt/tunnelmgr/vendor/backhaul/bin/backhaul
 install -o root -g root -m 0755 "$ROOT/vendor/backhaul/scripts/backhaul-manager.py" /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py

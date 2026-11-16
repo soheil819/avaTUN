@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.10"
+APP_VERSION="1.0.0.11"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -935,9 +935,20 @@ def server_remote(server,payload):
     if isinstance(result,dict) and result.get("error"):raise RuntimeError(result["error"])
     return result
 
+SLAVE_SYNC_PACKAGES=("ca-certificates","curl","python3","iproute2","haproxy","wireguard-tools","openvpn","ocserv","openconnect","iperf3","strongswan-swanctl","charon-systemd","libstrongswan-extra-plugins","libcharon-extra-plugins","frr","openssl","certbot","kmod","qrencode","gh","python3-cryptography","python3-snappy")
+
+def slave_package_lock():
+    lock={}
+    for package in SLAVE_SYNC_PACKAGES:
+        result=subprocess.run(['/usr/bin/dpkg-query','-W','-f=${db:Status-Abbrev}\\t${Version}',package],capture_output=True,text=True,timeout=10)
+        fields=result.stdout.strip().split('\t',1)
+        if result.returncode==0 and len(fields)==2 and fields[0].startswith('ii') and fields[1]:lock[package]=fields[1]
+    if not lock:raise RuntimeError('Could not read installed Debian package versions on the central server')
+    return lock
+
 def install_remote(server):
     root=pathlib.Path(__file__).resolve().parents[1]
-    remote_scripts=("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py","tunnelmgr")
+    remote_scripts=("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py","sync-dependencies.py","tunnelmgr")
     missing=[name for name in remote_scripts if not (root/"scripts"/name).is_file()]
     if missing:raise RuntimeError("Central panel is missing remote installer files: "+", ".join(missing)+". Update the central panel, then retry.")
     stats=privileged({'op':'haproxy-stats','id':'forwards','action':'read'})
@@ -948,6 +959,9 @@ def install_remote(server):
             content=json.dumps(stats['config']).encode()
             member=tarfile.TarInfo('runtime/haproxy-stats.json');member.size=len(content);member.mode=0o600
             tf.addfile(member,io.BytesIO(content))
+            package_lock=json.dumps(slave_package_lock(),sort_keys=True).encode()
+            member=tarfile.TarInfo('runtime/slave-package-lock.json');member.size=len(package_lock);member.mode=0o600
+            tf.addfile(member,io.BytesIO(package_lock))
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
@@ -959,9 +973,9 @@ def install_remote(server):
             if arch and xray.is_file():tf.add(xray,arcname=f'runtime/xray-core-{arch}')
         payload=pathlib.Path(bundle.name).read_bytes()
     remote="mkdir -p /tmp/tunnelmgr-bootstrap && tar -xzf - -C /tmp/tunnelmgr-bootstrap && sh /tmp/tunnelmgr-bootstrap/scripts/install-preview.sh"
-    p=subprocess.run(ssh_argv(server)+[remote],input=payload,capture_output=True,timeout=180)
-    if p.returncode:raise RuntimeError((p.stderr or p.stdout).decode(errors="replace")[-2000:])
-    return {"ok":True,"output":p.stdout.decode(errors="replace")[-1500:]}
+    p=subprocess.run(ssh_argv(server)+[remote],input=payload,capture_output=True,timeout=600)
+    if p.returncode:raise RuntimeError((p.stderr or p.stdout).decode(errors="replace")[-5000:])
+    return {"ok":True,"output":p.stdout.decode(errors="replace")[-5000:]}
 def save(ident,mode,metadata):
     with db() as c:c.execute("INSERT INTO tunnels(id,kind,mode,metadata) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET mode=excluded.mode,metadata=excluded.metadata",(ident,"backhaul",mode,json.dumps(metadata)))
 
