@@ -17,6 +17,7 @@ chmod 0644 /etc/apt/keyrings/githubcli-archive-keyring.gpg
 printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n' "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/github-cli.list
 
 install -d -o root -g root -m 0755 /usr/local/bin /etc/backhaul /var/lib/backhaul-manager
+install -o root -g root -m 0755 "$ROOT/scripts/tunnelmgr" /usr/local/bin/tunnelmgr
 # Backhaul TUN is shipped as a manifest-verified amd64 core. The manager owns
 # the transactional upgrade: it backs up and detaches managed tunnel files,
 # swaps the core, restores configs, validates them, and brings enabled tunnels

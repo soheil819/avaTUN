@@ -2,9 +2,16 @@
 
 برای ساخت حساب فقط‌خواندنی روی همان سرور:
 ```sh
-sudo -u tunnelmgr env TUNNELMGR_HOME=/var/lib/tunnelmgr python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account create ali --role viewer
+sudo tunnelmgr account create ali --role viewer
 ```
 توکن خروجی را در Sign in وارد کنید. operator اجازهٔ روشن/خاموش/راه‌اندازی مجدد دارد. admin اجازهٔ ساخت، حذف و استقرار نیز دارد. به جای create از list یا revoke NAME برای مشاهده یا لغو حساب استفاده کنید.
+
+برای ویرایش نقش یا گذرواژهٔ حساب موجود:
+```sh
+sudo tunnelmgr account edit ali --role operator
+sudo tunnelmgr account edit ali --set-password
+```
+همچنین `sudo tunnelmgr account password ali` گذرواژهٔ تازه می‌گیرد. حساب تکراری را با `create` دوباره نسازید؛ برای تغییر آن از `edit` یا `password` استفاده کنید.
 
 برای پروفایل native، نمونهٔ packaging/examples/native.json را با IPهای واقعی در /etc/tunnelmgr/network/NAME.json نصب کنید؛ kind یکی از gre و ipip است. در سمت دوم آدرس‌ها را جابه‌جا کنید. سرویس را با systemctl enable --now tunnelmgr-network@NAME فعال کنید. این پروتکل‌ها رمزنگاری ندارند.
 

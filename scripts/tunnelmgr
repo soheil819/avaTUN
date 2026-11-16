@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Run this command with sudo: sudo tunnelmgr $*" >&2
+    exit 1
+fi
+
+if [ ! -x /usr/sbin/runuser ]; then
+    echo "runuser is required to access the avaTUN service account." >&2
+    exit 1
+fi
+
+exec /usr/sbin/runuser -u tunnelmgr -- /usr/bin/env \
+    TUNNELMGR_HOME=/var/lib/tunnelmgr \
+    /usr/bin/python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py "$@"

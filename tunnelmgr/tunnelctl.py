@@ -227,6 +227,8 @@ def account(args):
             print(json.dumps([dict(x) for x in c.execute("SELECT name,role,totp_enabled FROM accounts ORDER BY name")]))
             return
         if not args.name or not ID.fullmatch(args.name):raise ValueError("invalid account name")
+        if args.action=="create" and c.execute("SELECT 1 FROM accounts WHERE name=?",(args.name,)).fetchone():
+            raise ValueError(f"account '{args.name}' already exists; use 'account edit {args.name} --role ROLE' or 'account password {args.name}'")
         if args.action=="revoke":
             if not c.execute("DELETE FROM accounts WHERE name=?",(args.name,)).rowcount:raise ValueError("unknown account")
             for key,value in list(SESSIONS.items()):
@@ -237,11 +239,33 @@ def account(args):
             for key,value in list(SESSIONS.items()):
                 if value.get('name')==args.name:SESSIONS.pop(key,None)
             return
-        password=args.password or (sys.stdin.readline().rstrip("\r\n") if getattr(args,"password_stdin",False) else getpass.getpass("New password (12+ characters): "))
-        if len(password)<12:raise ValueError("password must contain at least 12 characters")
+        if args.action=="edit" and not c.execute("SELECT 1 FROM accounts WHERE name=?",(args.name,)).fetchone():
+            raise ValueError("unknown account")
+        password_requested=args.action=="password" or args.action=="create" or args.set_password or args.password is not None or args.password_stdin
+        if args.action=="edit" and args.role is None and not password_requested:
+            raise ValueError("no changes requested; use --role ROLE or --set-password")
+        password=None
+        if password_requested:
+            password=args.password or (sys.stdin.readline().rstrip("\r\n") if args.password_stdin else getpass.getpass("New password (12+ characters): "))
+            if len(password)<12:raise ValueError("password must contain at least 12 characters")
         if args.action=="password":
             if not c.execute("UPDATE accounts SET digest=? WHERE name=?",(password_digest(password),args.name)).rowcount:raise ValueError("unknown account")
-        else:c.execute("INSERT INTO accounts(name,role,digest) VALUES(?,?,?)",(args.name,args.role,password_digest(password)))
+            c.commit()
+            print("password updated")
+            return
+        if args.action=="edit":
+            updates=[];values=[]
+            if args.role is not None:updates.append("role=?");values.append(args.role)
+            if password is not None:updates.append("digest=?");values.append(password_digest(password))
+            values.append(args.name)
+            c.execute(f"UPDATE accounts SET {', '.join(updates)} WHERE name=?",values)
+            c.commit()
+            print("account updated")
+            return
+        try:c.execute("INSERT INTO accounts(name,role,digest) VALUES(?,?,?)",(args.name,args.role or "viewer",password_digest(password)))
+        except sqlite3.IntegrityError as e:
+            if "accounts.name" in str(e):raise ValueError(f"account '{args.name}' already exists; use 'account edit {args.name} --role ROLE' or 'account password {args.name}'") from None
+            raise
         c.commit()
         print("account created")
 
@@ -2994,7 +3018,7 @@ def main():
     s.add_parser("init");s.add_parser("list");a=s.add_parser("api");a.add_argument("--host",default="127.0.0.1");a.add_argument("--port",type=int,default=8765)
     b=s.add_parser("backhaul");b.add_argument("args",nargs=argparse.REMAINDER)
     m=s.add_parser("mesh");ms=m.add_subparsers(dest="mesh_cmd",required=True);mp=ms.add_parser("plan");mp.add_argument("--nodes",required=True);mp.add_argument("--pool",default="10.240.0.0/16");mp.add_argument("--topology",choices=("full","hub"),default="full");mp.add_argument("--hub");mp.add_argument("--direction",choices=("direct","reverse"),default="direct");mp.add_argument("--public-nodes");mp.add_argument("--endpoints",help="comma-separated node=host entries")
-    u=s.add_parser("account");u.add_argument("action",choices=("create","revoke","list","password","mfa-reset"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"),default="viewer");u.add_argument("--password",help=argparse.SUPPRESS);u.add_argument("--password-stdin",action="store_true",help=argparse.SUPPRESS)
+    u=s.add_parser("account");u.add_argument("action",choices=("create","edit","revoke","list","password","mfa-reset"));u.add_argument("name",nargs="?");u.add_argument("--role",choices=("viewer","operator","admin"));u.add_argument("--set-password",action="store_true",help="prompt for a new password (edit only)");u.add_argument("--password",help=argparse.SUPPRESS);u.add_argument("--password-stdin",action="store_true",help=argparse.SUPPRESS)
     n=p.parse_args()
     try:
         if n.cmd=="init":db().close();print(f"initialized {DB}; create the first user with: tunnelctl.py account create admin --role admin")
