@@ -102,7 +102,7 @@ done
 touch "$backup/ready"
 snapshot_mfa_state "$backup/panel-data"
 systemctl stop avatun-telegram.service tunnelmgr.service tunnelmgr-privd.service 2>/dev/null || true
-if AVATUN_INSTALL_DEFER_START=1 sh "$root/scripts/install-preview.sh" && restore_mfa_state "$backup/panel-data" && systemctl enable --now frr.service tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer && systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service && { [ ! -f /etc/avatun/telegram.json ] || ! systemctl is-enabled --quiet avatun-telegram.service || systemctl restart avatun-telegram.service; } && curl -fsS --retry 4 --retry-connrefused http://127.0.0.1:8765/health && systemctl is-active --quiet tunnelmgr-privd; then
+if AVATUN_INSTALL_DEFER_START=1 sh "$root/scripts/install-preview.sh" && restore_mfa_state "$backup/panel-data" && systemctl enable --now tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer && systemctl restart tunnelmgr-privd.service tunnelmgr.service && { [ ! -f /etc/avatun/telegram.json ] || ! systemctl is-enabled --quiet avatun-telegram.service || systemctl restart avatun-telegram.service; } && curl -fsS --retry 4 --retry-connrefused http://127.0.0.1:8765/health && systemctl is-active --quiet tunnelmgr-privd; then
  echo "Rollback snapshot: $backup"
 else
  restore "$backup"; exit 1

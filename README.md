@@ -1,6 +1,6 @@
 # avaTUN | tunnel manager web panel
 
-**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 1.0.0.13.**
+**مدیریت تونل‌ها و سرورها از یک پنل وب، همراه با نقشهٔ Mesh و ربات تلگرام. نسخهٔ پایدار 2.0.0.**
 
 avaTUN پنلی برای نصب و مدیریت تونل‌های لینوکس است. سرورها را با SSH اضافه کنید، تونل‌های دوطرفه بسازید، وضعیت و منابع را ببینید و مسیرهای TCP را با HAProxy مدیریت کنید.
 
@@ -22,7 +22,7 @@ sudo bash scripts/install-from-github.sh
 
 اسکریپت آغاز نصب، فایل ریلیز را تا پیش از تأیید attestation امضاشدهٔ GitHub Actions اجرا نمی‌کند. سپس پیش‌نیازها را نصب می‌کند و نشانی پنل و اطلاعات ورود اولیه را در ترمینال نشان می‌دهد. در صورت نبود Swap، فایل Swap پایدار ۵۱۲ مگابایتی ساخته می‌شود. پورت پیش‌فرض پنل ۸۷۶۵ است.
 
-نسخهٔ پایدار avaTUN 1.0.0.13 است. حجم دریافتی، ارسالی و مجموع تبادل هر تونل و هر پورت HA در پنل و Telegram Mini App نمایش داده می‌شود. HTTPS به‌صورت پیش‌فرض با گواهی خودامضا فعال است؛ برای حذف هشدار مرورگر، از تنظیمات پنل گواهی معتبر دامنه نصب کنید.
+نسخهٔ پایدار avaTUN 2.0.0 است؛ این نسخه خط پایهٔ پایدار پروژه پس از بازبینی و پاک‌سازی قابلیت‌های آزمایشی است. حجم دریافتی، ارسالی و مجموع تبادل هر تونل و هر پورت HA در پنل و Telegram Mini App نمایش داده می‌شود. HTTPS به‌صورت پیش‌فرض با گواهی خودامضا فعال است؛ برای حذف هشدار مرورگر، از تنظیمات پنل گواهی معتبر دامنه نصب کنید.
 
 ### English
 
@@ -61,8 +61,6 @@ The unified tunnel form lists Backhaul TUN, GRE, IPIP, GRETAP, Geneve, VXLAN, ER
 The **Port forwarding** page manages TCP listeners with HAProxy on the panel server. Install `haproxy` on the controller, then select one or more local tunnel links; each link's peer tunnel IP becomes a backend path, with configurable weight, `leastconn`/`roundrobin`/source-affinity scheduling, and TCP health checks. The destination application must listen on those peer IPs (or on all interfaces). This page does not yet forward to LAN hosts behind a peer or balance arbitrary UDP services.
 
 For a two-ended link, create each endpoint on its server and reverse the local/peer addresses and peer IDs on the other side. The mesh view draws edges when the same tunnel ID is present on both servers; a combined transactional two-server wizard is not yet included.
-
-The routing page can configure paired BGP or OSPF profiles through FRR on both tunnel endpoints. BGP and OSPF export only the explicitly entered private prefixes; port-forward backends on routed remote networks are accepted only when covered by the matching far-side route profile. The routing daemon must be available through the system `frr` package.
 
 ## نصب از سورس
 

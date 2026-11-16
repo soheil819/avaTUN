@@ -10,7 +10,6 @@ import time
 
 from network import apply, iface, private, verify_tunnel_link, remove_managed_link
 from topology import mesh_plan
-from routing import validate as validate_routing
 
 def ensure_kernel_modules(cfg):
     kind=cfg.get('kind')
@@ -42,11 +41,8 @@ def validate(group, cfg):
             raise ValueError('Every node needs a reachable SSH endpoint')
         return
     kind=cfg.get('kind')
-    if kind not in ('gre','gretap','geneve','vxlan','ipip','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'):
+    if kind not in ('gre','gretap','geneve','vxlan','ipip','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect'):
         raise ValueError('Unsupported tunnel type')
-    if kind=='routing':
-        validate_routing(cfg)
-        return
     iface(cfg['interface'])
     if kind in ('gre','ipip','gretap','gre-fou','ipip-fou','l2tpv3') and ('inner_local' not in cfg or 'inner_peer' not in cfg):
         raise ValueError('این نوع تونل به IP داخلی هر دو سمت نیاز دارد؛ برای نمونه 10.250.0.1/30 و 10.250.0.2/30 را وارد کن.')
@@ -155,16 +151,16 @@ def manage(req, ident):
     path = directory / (ident+'.json')
     action = req['action']
     if action == 'list':
-        return {'items': sorted(p.stem for p in directory.glob('*.json') if group=='mesh' or json.loads(p.read_text()).get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'))}
+        return {'items': sorted(p.stem for p in directory.glob('*.json') if group=='mesh' or json.loads(p.read_text()).get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect'))}
     old = json.loads(path.read_text()) if path.exists() else None
-    if old and group=='network' and old.get('kind') not in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'):
+    if old and group=='network' and old.get('kind') not in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect'):
         raise ValueError('Reserved network profile')
     if action=='read' and old is not None:
         return {'config':old}
     unit = f'tunnelmgr-{group}@{ident}.service'
     if action=='validate' and group=='network':
         cfg=req['config'];validate(group,cfg)
-        if cfg.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+        if cfg.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap'):
             device=Path('/sys/class/net')/cfg['interface']
             if device.exists():
                 if not old or old.get('interface')!=cfg['interface']:raise ValueError('The requested tunnel interface is already in use')
@@ -224,15 +220,15 @@ def manage(req, ident):
             # rolling back a valid tunnel on a short client-side timeout.
             return {'ok':True,'output':'Tunnel service start was accepted and is still activating.'}
         return {'ok':True,'output':result.stdout.strip()}
-    if old and group=='network' and action=='delete' and old.get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect','routing'):
-        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+    if old and group=='network' and action=='delete' and old.get('kind') in ('gre','ipip','gretap','geneve','vxlan','sit-6to4','sit-isatap','erspan','gre-fou','ipip-fou','sit-fou','l2tpv3','ipsec-ikev2','ipsec-esp-udp','esp','wireguard','openvpn','openconnect'):
+        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap'):
             verify_tunnel_link(old['interface'],old['kind'])
         stopped=subprocess.run(['systemctl','disable','--now',unit],capture_output=True,text=True,timeout=45)
         if stopped.returncode:raise RuntimeError(stopped.stderr.strip() or 'Could not stop and disable '+unit)
         # ExecStop is skipped for inactive/failed oneshot units. Explicit cleanup
         # must run while the old JSON still exists, even if systemd did nothing.
         apply(old,False,ident)
-        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap','routing'):
+        if old.get('kind') not in ('ipsec-ikev2','ipsec-esp-udp','esp','sit-6to4','sit-isatap'):
             remove_managed_link(old['interface'],old['kind'])
         if old.get('kind') in ('ipsec-ikev2','ipsec-esp-udp'):
             safe=re.sub(r'[^a-zA-Z0-9_-]','_',old['interface'])

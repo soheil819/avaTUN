@@ -113,7 +113,6 @@ for package in libstrongswan-extra-plugins libcharon-extra-plugins; do
     PACKAGE_STATUS=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
     case "$PACKAGE_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES $package" ;; esac
 done
-command -v vtysh >/dev/null 2>&1 || PACKAGES="$PACKAGES frr"
 command -v openssl >/dev/null 2>&1 || PACKAGES="$PACKAGES openssl"
 command -v certbot >/dev/null 2>&1 || PACKAGES="$PACKAGES certbot"
 command -v modprobe >/dev/null 2>&1 || PACKAGES="$PACKAGES kmod"
@@ -125,7 +124,7 @@ case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGE
 PYTHON_SNAPPY_STATUS=$(dpkg-query -W -f='${Status}' python3-snappy 2>/dev/null || true)
 case "$PYTHON_SNAPPY_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-snappy" ;; esac
 if [ -n "$PACKAGES" ] || [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
-    command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect, FRR and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
+    command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
     if [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
         python3 "$ROOT/scripts/sync-dependencies.py" "$ROOT/runtime/slave-package-lock.json"
@@ -204,7 +203,6 @@ install -o root -g root -m 0644 "$ROOT/tunnelmgr/telegram_resources.py" /opt/tun
 install -o root -g root -m 0644 "$ROOT/packaging/systemd/avatun-telegram.service" /etc/systemd/system/avatun-telegram.service
 install -d -o root -g tunnelmgr -m 0750 /etc/avatun
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/openconnect_runner.py" /opt/tunnelmgr/tunnelmgr/openconnect_runner.py
-install -o root -g root -m 0644 "$ROOT/tunnelmgr/routing.py" /opt/tunnelmgr/tunnelmgr/routing.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/topology.py" /opt/tunnelmgr/tunnelmgr/topology.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/tunnel_lifecycle.py" /opt/tunnelmgr/tunnelmgr/tunnel_lifecycle.py
 install -o root -g root -m 0644 "$ROOT/tunnelmgr/privd.py" /opt/tunnelmgr/tunnelmgr/privd.py
@@ -270,28 +268,12 @@ install -m 0644 "$ROOT/tunnelmgr/apply_profile.py" /opt/tunnelmgr/tunnelmgr/
 install -m 0644 "$ROOT/packaging/systemd/tunnelmgr-mesh@.service" /etc/systemd/system/
 install -m 0644 "$ROOT/tunnelmgr/profiles.py" /opt/tunnelmgr/tunnelmgr/
 install -m 0644 "$ROOT/tunnelmgr/tls_manager.py" /opt/tunnelmgr/tunnelmgr/tls_manager.py
-python3 - <<'PY'
-from pathlib import Path
-p=Path('/etc/frr/daemons')
-if p.exists():
-    lines=p.read_text().splitlines()
-    needed={'zebra','bgpd','ospfd'}
-    found=set()
-    out=[]
-    for line in lines:
-        key=line.split('=',1)[0] if '=' in line else ''
-        if key in needed:
-            out.append(key+'=yes');found.add(key)
-        else:out.append(line)
-    out.extend(x+'=yes' for x in sorted(needed-found))
-    p.write_text('\n'.join(out)+'\n')
-PY
 systemctl daemon-reload
 if [ "${AVATUN_INSTALL_DEFER_START:-0}" = "1" ]; then
-    systemctl enable frr.service tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer
+    systemctl enable tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer
     systemctl start tunnelmgr-github-update-check.timer
 else
-    systemctl enable --now frr.service tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer
+    systemctl enable --now tunnelmgr-privd.service tunnelmgr.service tunnelmgr-github-update-check.timer
 fi
 
 # Never take over an existing HAProxy configuration blindly. Validate the
@@ -316,7 +298,7 @@ else
     echo 'WARNING: HAProxy config is missing; leaving haproxy.service untouched.' >&2
 fi
 if [ "${AVATUN_INSTALL_DEFER_START:-0}" != "1" ]; then
-    systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service
+    systemctl restart tunnelmgr-privd.service tunnelmgr.service
     if [ -f /etc/avatun/telegram.json ] && systemctl is-enabled --quiet avatun-telegram.service; then
         systemctl restart avatun-telegram.service
     fi

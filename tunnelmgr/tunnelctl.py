@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.13"
+APP_VERSION="2.0.0"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -59,7 +59,6 @@ def db():
     c.execute("CREATE TABLE IF NOT EXISTS port_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS proxy_lines(id TEXT PRIMARY KEY,metadata TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS proxy_forwards(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
-    c.execute("CREATE TABLE IF NOT EXISTS routing_links(id TEXT PRIMARY KEY,config TEXT NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS tunnel_speedtests(id TEXT PRIMARY KEY,result TEXT NOT NULL,checked_at INTEGER NOT NULL)")
     c.execute("CREATE TABLE IF NOT EXISTS traffic_counters(scope TEXT NOT NULL,entity_id TEXT NOT NULL,server_id TEXT NOT NULL,rx_raw INTEGER NOT NULL,tx_raw INTEGER NOT NULL,rx_total INTEGER NOT NULL,tx_total INTEGER NOT NULL,checked_at INTEGER NOT NULL,PRIMARY KEY(scope,entity_id))")
     c.execute("CREATE TABLE IF NOT EXISTS resource_report_settings(server_id TEXT PRIMARY KEY,telegram_enabled INTEGER NOT NULL DEFAULT 1,metrics TEXT NOT NULL DEFAULT '[\"cpu\",\"memory\",\"swap\",\"disk\",\"network\"]')")
@@ -921,7 +920,7 @@ def resource_monitor_loop():
 
 def server_remote(server,payload):
     import inspect
-    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface'),'local':d.get('local')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='xray-config':\n out=t.privileged({'op':'xray-config','id':'xray','action':d.get('action','apply'),'config':d.get('config')})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='routing-profile-create':\n name=d['profile'];cfg=d['config'];out=t.privileged({'op':'profile','group':'network','id':name,'action':'create','config':cfg})\n if out.get('ok'):\n  out=t.privileged({'op':'profile','group':'network','id':name,'action':'start'})\n  if not out.get('ok'):t.privileged({'op':'profile','group':'network','id':name,'action':'delete'})\nelif op=='routing-profile-delete':\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'delete'}) if p.get('config') else {'ok':True,'already_removed':True}\nelif op=='routing-status':\n import routing as r\n p=t.privileged({'op':'profile','group':'network','id':d['profile'],'action':'read'});out=r.status(p['config']) if p.get('config') else {'state':'error','error':p.get('error','profile missing')}\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'],delete_secret=True)\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
+    code="import sys,json,subprocess,os,pathlib,shutil,time,ipaddress;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d.get('op');out=None\nif op=='list':\n out=[]\n for x in t.rows():\n  try:\n   m=x['metadata'];native=m.get('native_profile');r=t.privileged({'op':'profile','group':'network','id':native,'action':'status'} if native else {'op':'status','id':x['id']});x['live']={'active':'ActiveState=active' in r.get('output','')} if native else r.get('status',{});ipsec=m.get('transport') in ('ipsec-ikev2','ipsec-esp-udp','esp');interface=m.get('tun_name') if m.get('manager')=='Backhaul' else (None if ipsec else (m.get('interface') or m.get('tun_name')));x['interface_addresses']=t.interface_ip_addresses(interface) if interface else [];x['tun_addresses']=x['interface_addresses'];x['health']={'state':'monitor-only','reachable':None,'checked_at':int(time.time()),'probe_error':'waiting for central TUN peer probe'} if m.get('carrier')=='tun' and m.get('encapsulation')=='ipx' else t.tunnel_health(x)\n  except Exception as e:x['live']={'active':False};x['health']={'state':'error','error':str(e)}\n  x['server_id']="+repr(server['id'])+";out.append(x)\n services=[subprocess.run(['/usr/bin/systemctl','is-active',u],capture_output=True,text=True).stdout.strip() for u in ('tunnelmgr.service','tunnelmgr-privd.service')];out={'items':out,'services':services}\nelif op=='probe':\n out=t.privileged({'op':'probe','id':d['id'],'peer':d['peer'],'interface':d.get('interface'),'local':d.get('local')})\nelif op=='resources':\n out=t.resource_snapshot()\nelif op=='network-info':\n out=t.network_snapshot()\nelif op=='allocation-snapshot':\n out={'items':t.rows(),'network':t.network_snapshot()}\n if d.get('include_network_profiles'):\n  out['network_profiles']=[]\n  listed=t.privileged({'op':'profile','group':'network','id':'inventory','action':'list'})\n  if listed.get('error') or not isinstance(listed.get('items'),list):raise RuntimeError('Could not safely inspect saved network profiles.')\n  for profile_id in listed.get('items',[]):\n   result=t.privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})\n   if result.get('error'):raise RuntimeError('Could not safely inspect saved network profiles.')\n   config=result.get('config')\n   if not config:raise RuntimeError('A network profile changed during allocation; retry after it finishes.')\n   out['network_profiles'].append({'profile_id':profile_id,**{key:config[key] for key in ('kind','interface','vni','port','inner_local','inner_peer') if key in config}})\n if d.get('include_l2tp'):\n  out['l2tp_profiles']=[]\n  for item in out['items']:\n   meta=item.get('metadata') or {};profile=meta.get('native_profile')\n   if meta.get('transport')!='l2tpv3' or not profile:continue\n   result=t.privileged({'op':'profile','group':'network','id':profile,'action':'read'})\n   if not result.get('config'):raise RuntimeError(result.get('error','could not read managed L2TPv3 profile'))\n   out['l2tp_profiles'].append(result['config'])\nelif op=='native-config':\n x=t.find(d['id']);n=x['metadata'].get('native_profile') if x else None\n out=t.privileged({'op':'profile','group':'network','id':n,'action':'read'}) if n else {'error':'native tunnel is missing'}\nelif op=='interface-stats':\n out=t.privileged({'op':'interface-stats','id':d['id'],'interface':d['interface']})\nelif op=='mtu-probe':\n out=t.path_mtu_probe(d['host'])\nelif op=='create':\n out=t.create_instance(d['data']) if d['data'].get('transport')=='backhaul' else t.create_native(d['data'])\nelif op=='config':\n out=t.tunnel_config(d['id'])\nelif op=='validate':\n out=t.validate_tunnel_config(d['data'])\nelif op=='update':\n out=t.update_tunnel(d['data'])\nelif op=='forward-apply':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'apply','rules':d['rules']})\nelif op=='xray-config':\n out=t.privileged({'op':'xray-config','id':'xray','action':d.get('action','apply'),'config':d.get('config')})\nelif op=='forward-status':\n out=t.privileged({'op':'haproxy','id':'forwards','action':'status'})\nelif op=='secret':\n out=t.privileged({'op':'secret','id':d['id'],'action':d['action'],'kind':d.get('kind','token'),'value':d.get('value')})\nelif op=='operate':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n if d['action']=='delete':\n  out=t.remove_tunnel_endpoint(d['id'],delete_secret=True)\n else:\n  n=x['metadata'].get('native_profile');out=t.privileged({'op':'profile','group':'network','id':n,'action':d['action']} if n else {'op':d['action'],'id':d['id']})\nprint(json.dumps(out,ensure_ascii=False))"
     needle="  x['server_id']="+repr(server['id'])+";out.append(x)"
     replacement="  try:x['traffic_raw']=t.tunnel_counter(x)\n  except Exception:x['traffic_raw']=None\n  x['server_id']="+repr(server['id'])+";out.append(x)"
     code=code.replace(needle,replacement,1)
@@ -935,7 +934,7 @@ def server_remote(server,payload):
     if isinstance(result,dict) and result.get("error"):raise RuntimeError(result["error"])
     return result
 
-SLAVE_SYNC_PACKAGES=("ca-certificates","curl","python3","iproute2","haproxy","wireguard-tools","openvpn","ocserv","openconnect","iperf3","strongswan-swanctl","charon-systemd","libstrongswan-extra-plugins","libcharon-extra-plugins","frr","openssl","certbot","kmod","qrencode","gh","python3-cryptography","python3-snappy")
+SLAVE_SYNC_PACKAGES=("ca-certificates","curl","python3","iproute2","haproxy","wireguard-tools","openvpn","ocserv","openconnect","iperf3","strongswan-swanctl","charon-systemd","libstrongswan-extra-plugins","libcharon-extra-plugins","openssl","certbot","kmod","qrencode","gh","python3-cryptography","python3-snappy")
 
 def slave_package_lock():
     lock={}
@@ -1209,17 +1208,6 @@ def normalize_forward(data,server_id,allow_missing_backends=False):
                 if address_ip.version!=peer_address.version:
                     family="IPv4" if peer_address.version==4 else "IPv6"
                     raise ValueError(f"IP مقصد برای تونل {tunnel_id} باید از نوع {family} باشد")
-                if address_ip!=peer_address:
-                    routed=False
-                    with db() as c:route_rows=[json.loads(r['config']) for r in c.execute('SELECT config FROM routing_links')]
-                    for link in route_rows:
-                        if link.get('tunnel_id')!=tunnel_id:continue
-                        if server_id==link.get('server_a'):peer_config=link.get('config_b',{})
-                        elif server_id==link.get('server_b'):peer_config=link.get('config_a',{})
-                        else:continue
-                        if any(address_ip in ipaddress.ip_network(prefix,strict=True) for prefix in peer_config.get('networks',[]) if ipaddress.ip_network(prefix,strict=True).version==address_ip.version):
-                            routed=True;break
-                    if not routed:raise ValueError(f"{address_ip} is not advertised by the far end of an active BGP/OSPF link on tunnel {tunnel_id}")
                 address=str(address_ip)
             else:address=str(peer_address)
         backends.append({"tunnel_id":tunnel_id,"address":address,"weight":weight,"role":role})
@@ -1231,125 +1219,6 @@ def normalize_forward(data,server_id,allow_missing_backends=False):
     enabled=data.get("enabled",True)
     if type(enabled) is not bool:raise ValueError("وضعیت فعال بودن قانون نامعتبر است")
     return {"enabled":enabled,"id":ident,"server_id":server_id,"listen_ip":listen,"listen_port":listen_port,"backend_port":backend_port,"algorithm":algorithm,"proxy_protocol":proxy_protocol,"check_send_proxy":check_send_proxy,"shutdown_sessions":shutdown_sessions,"backends":backends}
-
-def _prefixes(value):
-    if isinstance(value,str):value=[x.strip() for x in value.split(',') if x.strip()]
-    if not isinstance(value,list):raise ValueError('prefix list must be comma-separated IPv4 networks')
-    result=[]
-    for prefix in value:
-        network=ipaddress.IPv4Network(prefix,strict=True)
-        text=str(network)
-        if text not in result:result.append(text)
-    return result
-
-def _routing_profile_apply(server_id,profile_id,config,action):
-    if server_id=='local':
-        if action=='delete':
-            current=privileged({'op':'profile','group':'network','id':profile_id,'action':'read'})
-            if not current.get('config'):return {'ok':True,'already_removed':True}
-        result=privileged({'op':'profile','group':'network','id':profile_id,'action':action,'config':config})
-        if not result.get('ok'):raise RuntimeError(result.get('error','could not configure routing profile'))
-        if action=='create':
-            result=privileged({'op':'profile','group':'network','id':profile_id,'action':'start'})
-            if not result.get('ok'):
-                privileged({'op':'profile','group':'network','id':profile_id,'action':'delete'})
-                raise RuntimeError(result.get('error','could not start routing profile'))
-        return result
-    server=next((s for s in server_rows() if s['id']==server_id),None)
-    if not server:raise ValueError('routing peer server is no longer registered')
-    op='routing-profile-create' if action=='create' else 'routing-profile-delete'
-    return server_remote(server,{'op':op,'profile':profile_id,'config':config})
-
-def create_routing_pair(data):
-    ident=data.get('id')
-    if not isinstance(ident,str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,41}',ident):raise ValueError('routing ID must be 1..42 lowercase letters, digits, _ or -')
-    with db() as c:
-        if c.execute('SELECT 1 FROM routing_links WHERE id=?',(ident,)).fetchone():raise ValueError('routing ID already exists')
-    a_id=data.get('server_a');b_id=data.get('server_b');tunnel_id=data.get('tunnel_id')
-    if not isinstance(a_id,str) or not isinstance(b_id,str) or a_id==b_id:raise ValueError('select two different tunnel endpoints')
-    servers={s['id']:s for s in server_rows()}
-    if a_id!='local' and a_id not in servers:raise ValueError('server A is not managed')
-    if b_id!='local' and b_id not in servers:raise ValueError('server B is not managed')
-    if not isinstance(tunnel_id,str) or not ID.fullmatch(tunnel_id):raise ValueError('select an existing tunnel')
-    endpoints={}
-    for sid in (a_id,b_id):
-        items=rows() if sid=='local' else server_remote(servers[sid],{'op':'list'}).get('items',[])
-        item=next((x for x in items if x.get('id')==tunnel_id),None)
-        if not item:raise ValueError(f'tunnel {tunnel_id} does not exist on {sid}')
-        meta=item.get('metadata',{})
-        if meta.get('transport')=='erspan':raise ValueError('ERSPAN has no IP link for BGP or OSPF')
-        local=meta.get('tun_local');peer=meta.get('tun_remote');interface=meta.get('tun_name')
-        if not local or not peer or not interface:raise ValueError(f'tunnel {tunnel_id} on {sid} has no routed IP interface')
-        local_ip=ipaddress.IPv4Interface(local);peer_ip=ipaddress.IPv4Interface(peer)
-        if local_ip.ip==peer_ip.ip:raise ValueError('tunnel local and peer IPs must differ')
-        host=meta.get('outer_local') or (servers.get(sid,{}).get('host') if sid!='local' else None)
-        try:router_id=str(ipaddress.IPv4Address(str(host).strip('[]')))
-        except ValueError:router_id=str(local_ip.ip)
-        endpoints[sid]={'local_ip':str(local_ip.ip),'peer_ip':str(peer_ip.ip),'interface':interface,'router_id':router_id}
-    protocol=data.get('protocol')
-    if protocol not in ('bgp','ospf'):raise ValueError('choose BGP or OSPF')
-    networks_a=_prefixes(data.get('networks_a'));networks_b=_prefixes(data.get('networks_b'))
-    if not networks_a or not networks_b:raise ValueError('enter at least one private network to advertise from each side')
-    try:asn_a=int(data.get('asn_a',0));asn_b=int(data.get('asn_b',0))
-    except (ValueError,TypeError) as exc:raise ValueError('BGP ASNs must be integers') from exc
-    area=str(data.get('area','0.0.0.0'))
-    import routing as routing_engine
-    configs={}
-    for sid,peer_sid,asn,peer_asn,advertise,expect in ((a_id,b_id,asn_a,asn_b,networks_a,networks_b),(b_id,a_id,asn_b,asn_a,networks_b,networks_a)):
-        cfg={'kind':'routing','id':ident,'protocol':protocol,**endpoints[sid],'peer_router_id':endpoints[peer_sid]['router_id'],'networks':advertise,'peer_networks':expect}
-        if protocol=='bgp':cfg.update(local_asn=asn,peer_asn=peer_asn)
-        else:cfg['area']=area
-        routing_engine.validate(cfg);configs[sid]=cfg
-    profile_id='route-'+ident;created=[]
-    try:
-        for sid in (a_id,b_id):_routing_profile_apply(sid,profile_id,configs[sid],'create');created.append(sid)
-    except Exception:
-        for sid in reversed(created):
-            try:_routing_profile_apply(sid,profile_id,configs[sid],'delete')
-            except Exception:pass
-        raise
-    record={'id':ident,'protocol':protocol,'tunnel_id':tunnel_id,'server_a':a_id,'server_b':b_id,'config_a':configs[a_id],'config_b':configs[b_id]}
-    try:
-        with db() as c:c.execute('INSERT INTO routing_links(id,config) VALUES(?,?)',(ident,json.dumps(record)))
-    except Exception:
-        for sid in reversed(created):
-            try:_routing_profile_apply(sid,profile_id,configs[sid],'delete')
-            except Exception:pass
-        raise
-    return {'ok':True,'id':ident,'protocol':protocol,'tunnel_id':tunnel_id,'servers':[a_id,b_id]}
-
-def routing_status(server_id,profile_id):
-    try:
-        if server_id=='local':
-            result=privileged({'op':'profile','group':'network','id':profile_id,'action':'read'});cfg=result.get('config')
-            if not cfg:raise RuntimeError(result.get('error','routing profile missing'))
-            import routing as routing_engine
-            return routing_engine.status(cfg)
-        server=next(s for s in server_rows() if s['id']==server_id)
-        return server_remote(server,{'op':'routing-status','profile':profile_id})
-    except Exception as exc:return {'state':'error','error':str(exc)}
-
-def routing_rows():
-    with db() as c:records=[json.loads(x['config']) for x in c.execute('SELECT config FROM routing_links ORDER BY id')]
-    result=[]
-    for item in records:
-        profile='route-'+item['id']
-        a=routing_status(item['server_a'],profile);b=routing_status(item['server_b'],profile)
-        item['status_a']=a;item['status_b']=b
-        result.append(item)
-    return result
-
-def delete_routing_link(ident):
-    with db() as c:
-        row=c.execute('SELECT config FROM routing_links WHERE id=?',(ident,)).fetchone()
-    if not row:raise ValueError('routing link not found')
-    item=json.loads(row['config']);profile='route-'+ident;errors=[]
-    for sid in (item['server_a'],item['server_b']):
-        try:_routing_profile_apply(sid,profile,item['config_a'] if sid==item['server_a'] else item['config_b'],'delete')
-        except Exception as exc:errors.append(f'{sid}: {exc}')
-    if errors:raise RuntimeError('could not remove routing from all endpoints: '+'; '.join(errors))
-    with db() as c:c.execute('DELETE FROM routing_links WHERE id=?',(ident,))
-    return {'ok':True,'id':ident}
 
 def apply_forward_set(server_id,rules):
     payload=[{k:v for k,v in rule.items() if k not in ("server_id","enabled")} for rule in rules if rule.get("enabled",True)]
@@ -1786,7 +1655,7 @@ def create_native_pair(data):
                 config_a['port']=config_b['port']=port
         else:
             # Recreate the devices, keeping their saved identity/addresses unless
-            # the edit explicitly changes them. Routing and HAProxy reference them.
+            # the edit explicitly changes them. Forwarding rules reference them.
             for sid,cfg in ((a_id,config_a),(b_id,config_b)):
                 cfg['interface']=cfg.get('interface') or previous[sid]['interface']
                 if kind in address_kinds:
@@ -2519,9 +2388,6 @@ def server(host,port):
                 remote=[dict(tunnel,server_id=status["id"],traffic=traffic_totals('tunnel',tunnel['id'])) for status in statuses if status["id"]!="local" for tunnel in status.get("tunnels",[])]
                 servers=[{k:v for k,v in server.items() if k!="identity"}|{"has_identity":bool(server.get("identity"))} for server in server_rows()]
                 return self.send(200,{"servers":servers,"statuses":statuses,"tunnels":[*local,*remote],"resources":resources})
-            if route=="/api/v1/routing":
-                if role not in ("admin","operator"):return self.send(403,{"error":"insufficient permissions"})
-                return self.send(200,{"items":routing_rows()})
             if route=="/api/v1/forwards":
                 if role!="admin":return self.send(403,{"error":"admin role required"})
                 from urllib.parse import parse_qs
@@ -2983,7 +2849,7 @@ def server(host,port):
                 except Exception as e:return self.send(502,{"error":str(e)})
             operator_action=re.fullmatch(r"/api/v1/tunnels/[a-z0-9_-]+/(start|stop|restart|health|delete)",self.path)
             speedtest_action=re.fullmatch(r"/api/v1/tunnels/([a-z0-9_-]+)/speedtest",self.path)
-            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul-pair","/api/v1/tunnels/rebuild","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe","/api/v1/routing") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
+            operator_create=self.path in ("/api/v1/tunnels/native","/api/v1/tunnels/native-pair","/api/v1/tunnels/backhaul-pair","/api/v1/tunnels/rebuild","/api/v1/tunnels/backhaul","/api/v1/tunnels/secrets","/api/v1/tunnels/wireguard-pair","/api/v1/tunnels/openvpn-pair","/api/v1/tunnels/mtu-probe") or bool(speedtest_action) or bool(re.fullmatch(r"/api/v1/servers/[a-z0-9][a-z0-9_-]{0,47}/tunnels/(native|backhaul)",self.path))
             if role!="admin" and (self.path!="/api/v1/mesh/plan" and not (role=="operator" and (operator_action or operator_create))):
                 return self.send(403,{"error":"insufficient permissions"})
             try:
@@ -3050,10 +2916,6 @@ def server(host,port):
                 if self.path=="/api/v1/tunnels/wireguard-pair":return self.send(201,create_wireguard_pair(self.body()))
                 if self.path=="/api/v1/tunnels/openvpn-pair":return self.send(201,create_openvpn_pair(self.body()))
                 if self.path=="/api/v1/tunnels/openconnect-pair":return self.send(410,{"error":"OpenConnect has been removed from tunnel creation"})
-                if self.path=="/api/v1/routing":
-                    data=self.body()
-                    if data.get('action')=='delete':return self.send(200,delete_routing_link(data.get('id','')))
-                    return self.send(201,create_routing_pair(data))
                 bits=self.path.strip("/").split("/")
                 if len(bits)==5 and bits[:3]==["api","v1","tunnels"] and bits[4] in ("start","stop","restart","health","delete"):
                     ident,op=bits[3],bits[4]

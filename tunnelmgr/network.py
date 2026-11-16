@@ -476,31 +476,6 @@ def apply(profile, up, profile_name=None):
         except Exception:
             for route in reversed(done):run('route','del' if up else 'add',*route)
             raise
-    elif kind=='routing':
-        import routing
-        routing.apply(profile,up)
-        if up:
-            state=pathlib.Path('/run/tunnelmgr-netstate/ip_forward')
-            state.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-            knob=pathlib.Path('/proc/sys/net/ipv4/ip_forward')
-            if not state.exists():
-                fd=os.open(state,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-                with os.fdopen(fd,'w') as f:f.write(knob.read_text().strip())
-            knob.write_text('1')
-        else:
-            active=False
-            for path in pathlib.Path('/etc/tunnelmgr/network').glob('*.json'):
-                if path.stem==profile_name:continue
-                try:other=json.loads(path.read_text())
-                except Exception:continue
-                if other.get('kind')!='routing':continue
-                unit='tunnelmgr-network@'+path.stem+'.service'
-                state=subprocess.run(['/usr/bin/systemctl','show','-p','ActiveState','--value',unit],capture_output=True,text=True,timeout=8).stdout.strip()
-                if state in ('active','activating','deactivating'):active=True;break
-            statefile=pathlib.Path('/run/tunnelmgr-netstate/ip_forward')
-            if not active and statefile.exists():
-                pathlib.Path('/proc/sys/net/ipv4/ip_forward').write_text(statefile.read_text().strip())
-                statefile.unlink(missing_ok=True)
     else:raise ValueError('unknown kind')
 
 if __name__=='__main__':

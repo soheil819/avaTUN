@@ -52,8 +52,8 @@ if [ "$ACCOUNT_COUNT" -eq 0 ]; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now frr.service tunnelmgr-privd.service tunnelmgr.service
-systemctl restart frr.service tunnelmgr-privd.service tunnelmgr.service
+systemctl enable --now tunnelmgr-privd.service tunnelmgr.service
+systemctl restart tunnelmgr-privd.service tunnelmgr.service
 systemctl is-active --quiet tunnelmgr.service || {
     echo 'avaTUN service did not start; inspect: journalctl -u tunnelmgr.service -n 100 --no-pager' >&2
     exit 1
