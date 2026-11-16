@@ -145,7 +145,7 @@ def tunnel_create(req,ident):
     if p.returncode:raise RuntimeError((p.stdout+p.stderr)[-3000:])
     return {'ok':True,'output':(p.stdout+p.stderr)[-4000:]}
 
-def delete_backhaul(ident):
+def delete_backhaul(ident,delete_secret_kind=None):
     config=Path('/etc/backhaul')/(ident+'.toml')
     unit=Path('/etc/systemd/system')/('backhaul-'+ident+'.service')
     marker_dir=Path('/var/lib/backhaul-manager/removals')
@@ -167,6 +167,11 @@ def delete_backhaul(ident):
         if result.returncode:raise RuntimeError((result.stdout+result.stderr)[-2000:])
     elif config.exists() or unit.exists():raise ValueError('Refusing to remove an unowned Backhaul service/config')
     if saved.get('tun_name'):remove_managed_link(saved['tun_name'],'backhaul')
+    if delete_secret_kind is not None:
+        if delete_secret_kind not in ('token','psk'):raise ValueError('invalid managed Backhaul secret kind')
+        secret_dir=Path('/etc/backhaul/secrets')
+        (secret_dir/(ident+'.'+delete_secret_kind)).unlink(missing_ok=True)
+        (secret_dir/(ident+'.preserved.'+delete_secret_kind)).unlink(missing_ok=True)
     marker.unlink(missing_ok=True)
     return {'ok':True}
 
@@ -697,7 +702,9 @@ def handle(c):
         if op in ('start','stop','restart','health'):
             p=invoke([op,ident]);return send(c,{'ok':p.returncode==0,'output':(p.stdout+p.stderr)[-8000:]})
         if op=='delete':
-            return send(c,delete_backhaul(ident))
+            secret_kind=req.get('delete_secret_kind')
+            if secret_kind is not None and secret_kind not in ('token','psk'):raise ValueError('invalid managed Backhaul secret kind')
+            return send(c,delete_backhaul(ident,secret_kind))
         if op=='status':
             p=invoke(['status',ident],10)
             if p.returncode:return send(c,{'error':p.stderr[-2000:]})

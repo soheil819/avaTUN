@@ -22,7 +22,7 @@ REMOTE = r'''import ipaddress,json,os,secrets,socket,subprocess,sys
 payload=json.load(sys.stdin)
 op=payload["op"]; ident=payload["id"]
 def app(action,data):
-    code="import sys,json;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d['op']\nif op=='list':\n out=t.rows()\nelif op=='create':\n out=t.create_instance(d['data'])\nelif op=='status':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n r=t.privileged({'op':'status','id':d['id']});x['live']=r.get('status',{});x['health']=t.tunnel_health(x);out=x\nelif op=='delete':\n r=t.privileged({'op':'delete','id':d['id']})\n if not r.get('ok'):raise ValueError(r.get('error','delete failed'))\n with t.db() as c:c.execute('DELETE FROM tunnels WHERE id=?',(d['id'],))\n out=r\nprint(json.dumps(out))"
+    code="import sys,json;sys.path.insert(0,'/opt/tunnelmgr/tunnelmgr');import tunnelctl as t;d=json.load(sys.stdin);op=d['op']\nif op=='list':\n out=t.rows()\nelif op=='create':\n out=t.create_instance(d['data'])\nelif op=='status':\n x=t.find(d['id'])\n if not x:raise ValueError('unknown tunnel')\n r=t.privileged({'op':'status','id':d['id']});x['live']=r.get('status',{});x['health']=t.tunnel_health(x);out=x\nelif op=='delete':\n out=t.remove_tunnel_endpoint(d['id'],delete_secret=True)\nprint(json.dumps(out))"
     cmd=["runuser","-u","tunnelmgr","--","env","TUNNELMGR_HOME=/var/lib/tunnelmgr","/usr/bin/python3","-c",code]
     p=subprocess.run(cmd,input=json.dumps({"op":action,**data}),text=True,capture_output=True,timeout=45)
     if p.returncode:raise RuntimeError((p.stderr or p.stdout)[-2000:])
