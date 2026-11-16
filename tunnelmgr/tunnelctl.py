@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.11"
+APP_VERSION="1.0.0.12"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -944,7 +944,8 @@ def slave_package_lock():
         fields=result.stdout.strip().split('\t',1)
         if result.returncode==0 and len(fields)==2 and fields[0].startswith('ii') and fields[1]:lock[package]=fields[1]
     if not lock:raise RuntimeError('Could not read installed Debian package versions on the central server')
-    return lock
+    release=platform.freedesktop_os_release()
+    return {'central_os':{key:release.get(key,'') for key in ('ID','VERSION_ID','VERSION_CODENAME','UBUNTU_CODENAME')},'packages':lock}
 
 def install_remote(server):
     root=pathlib.Path(__file__).resolve().parents[1]

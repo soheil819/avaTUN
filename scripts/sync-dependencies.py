@@ -3,6 +3,7 @@
 import json
 import os
 import pathlib
+import platform
 import re
 import shutil
 import subprocess
@@ -46,6 +47,15 @@ def available_versions(package):
     return versions
 
 
+def apt_candidate(package):
+    result = run(["/usr/bin/apt-cache", "policy", package], check=False, capture=True)
+    for line in result.stdout.splitlines():
+        if line.strip().startswith("Candidate:"):
+            candidate = line.split(":", 1)[1].strip()
+            return None if candidate == "(none)" else candidate
+    return None
+
+
 def snapshot_haproxy():
     config = pathlib.Path("/etc/haproxy")
     if not config.exists() and not config.is_symlink():
@@ -70,9 +80,20 @@ def restore_haproxy(backup):
 def main(lock_path):
     if os.geteuid() != 0:
         raise RuntimeError("Dependency synchronization must run as root")
-    lock = json.loads(pathlib.Path(lock_path).read_text())
-    if not isinstance(lock, dict) or not lock:
+    manifest = json.loads(pathlib.Path(lock_path).read_text())
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("packages"), dict) or not manifest["packages"]:
         raise RuntimeError("The central server package lock is empty or invalid")
+    lock = manifest["packages"]
+    central_os = manifest.get("central_os") or {}
+    slave_os = platform.freedesktop_os_release()
+    central_codename = central_os.get("VERSION_CODENAME") or central_os.get("UBUNTU_CODENAME")
+    slave_codename = slave_os.get("VERSION_CODENAME") or slave_os.get("UBUNTU_CODENAME")
+    same_release = bool(
+        central_os.get("ID")
+        and central_os.get("ID") == slave_os.get("ID")
+        and ((central_codename and central_codename == slave_codename)
+             or (not central_codename and central_os.get("VERSION_ID") == slave_os.get("VERSION_ID")))
+    )
     for package, version in lock.items():
         if not isinstance(package, str) or not PACKAGE_NAME.fullmatch(package):
             raise RuntimeError("The central server package lock contains an invalid package name")
@@ -80,20 +101,31 @@ def main(lock_path):
             raise RuntimeError(f"The central server package lock contains an invalid version for {package}")
 
     changes = []
+    exact_count = 0
+    compatible_count = 0
     for package, target in sorted(lock.items()):
         current = installed_version(package)
-        if current != target:
-            changes.append((package, current, target))
+        central_version_available = target in available_versions(package)
+        if same_release and (central_version_available or current == target):
+            desired = target
+            source = "central pin"
+            exact_count += 1
+        else:
+            desired = apt_candidate(package)
+            source = "slave repository candidate"
+            compatible_count += 1
+        if not desired:
+            raise RuntimeError(f"No compatible apt version is available for {package} on this slave")
+        if current != desired:
+            if desired not in available_versions(package):
+                raise RuntimeError(f"Selected apt version is unavailable for {package}={desired}")
+            changes.append((package, current, desired, source))
     if not changes:
-        print(f"All {len(lock)} managed Debian package versions match the central server.")
+        print(f"All {len(lock)} managed Debian package versions match their targets ({exact_count} central pins, {compatible_count} slave-repository versions).")
         return
 
-    unavailable = [f"{name}={target}" for name, _, target in changes if target not in available_versions(name)]
-    if unavailable:
-        raise RuntimeError("Central package versions are unavailable from this server's configured apt repositories: " + ", ".join(unavailable))
-
-    haproxy_backup = snapshot_haproxy() if any(name == "haproxy" for name, _, _ in changes) else None
-    specifications = [f"{name}={target}" for name, _, target in changes]
+    haproxy_backup = snapshot_haproxy() if any(name == "haproxy" for name, _, _, _ in changes) else None
+    specifications = [f"{name}={target}" for name, _, target, _ in changes]
     try:
         run([
             "/usr/bin/apt-get", "install", "--yes", "--allow-downgrades", "--no-install-recommends",
@@ -115,11 +147,11 @@ def main(lock_path):
                 raise RuntimeError(f"Could not restore the original HAProxy configuration; backup retained at {haproxy_backup}: {restore_error}")
             pathlib.Path(haproxy_backup).unlink(missing_ok=True)
 
-    mismatches = [f"{name}={installed_version(name) or 'missing'} (wanted {target})" for name, _, target in changes if installed_version(name) != target]
+    mismatches = [f"{name}={installed_version(name) or 'missing'} (wanted {target})" for name, _, target, _ in changes if installed_version(name) != target]
     if mismatches:
         raise RuntimeError("Package versions still differ after synchronization: " + ", ".join(mismatches))
-    for name, current, target in changes:
-        print(f"Updated {name}: {current or 'missing'} -> {target}")
+    for name, current, target, source in changes:
+        print(f"Updated {name}: {current or 'missing'} -> {target} ({source})")
 
 
 if __name__ == "__main__":
