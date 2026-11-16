@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="2.0.0"
+APP_VERSION="2.0.1"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -2284,14 +2284,6 @@ def server(host,port):
                 self.send_response(308,'Permanent Redirect');self.send_header('Location',f'https://{domain}:{port}{target}');self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0');self.end_headers();self.close_connection=True
                 return False
             except Exception:pass
-            try:remote=not ipaddress.ip_address(self.client_address[0]).is_loopback
-            except ValueError:remote=True
-            if remote:
-                host=self.headers.get('Host','').strip()
-                if host and re.fullmatch(r'(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::\d{1,5})?',host):
-                    target=self.path if self.path.startswith('/') and not self.path.startswith('//') and not any(ord(c)<32 for c in self.path) else '/'
-                    self.send_response(308,'Permanent Redirect');self.send_header('Location',f'https://{host}{target}');self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0');self.end_headers();self.close_connection=True
-                    return False
             return True
         def body(self):
             n=int(self.headers.get("Content-Length","0"))
@@ -2317,7 +2309,6 @@ def server(host,port):
                 return current
             with db() as c:account_row=c.execute("SELECT role,totp_enabled FROM accounts WHERE name=?",(entry['name'],)).fetchone()
             if not account_row:SESSIONS.pop(value,None);return None
-            if account_row['role']=='admin' and not account_row['totp_enabled'] and entry['name']!='avatun-telegram':return 'mfa_setup'
             if account_row['totp_enabled'] and not entry.get('mfa_verified'):return 'mfa_verify'
             return account_row['role']
         def session(self):
@@ -2369,7 +2360,7 @@ def server(host,port):
             if route=="/api/v1/auth/mfa":
                 session=self.session()
                 with db() as c:row=c.execute("SELECT role,totp_enabled,totp_pending,totp_pending_at FROM accounts WHERE name=?",(session['name'],)).fetchone()
-                return self.send(200,{'username':session['name'],'enabled':bool(row['totp_enabled']),'required':row['role']=='admin','setup_pending':bool(row['totp_pending'] and row['totp_pending_at']>=int(time.time())-600),'https_required':not isinstance(self.connection,ssl.SSLSocket)})
+                return self.send(200,{'username':session['name'],'enabled':bool(row['totp_enabled']),'required':False,'setup_pending':bool(row['totp_pending'] and row['totp_pending_at']>=int(time.time())-600),'https_required':not isinstance(self.connection,ssl.SSLSocket)})
             if route=="/api/v1/settings/panel-tls":
                 if role not in ("admin","mfa_setup"):return self.send(403,{"error":"admin role required"})
                 try:return self.send(200,privileged({'op':'panel-tls','id':'panel-tls','action':'status'}))
@@ -2510,12 +2501,10 @@ def server(host,port):
                         if not isinstance(self.connection,ssl.SSLSocket):return self.send(400,{'error':'برای ورود دومرحله‌ای باید پنل را با HTTPS باز کنی.'})
                         challenge=secrets.token_urlsafe(32);PENDING_LOGINS[challenge]={'name':name,'role':row['role'],'expires':time.time()+300,'attempts':0}
                         return self.send(200,{'ok':True,'mfa_required':True,'challenge':challenge,'username':name})
-                    service_account=name=='avatun-telegram'
-                    session=_new_session(name,row["role"],row['role']!='admin' or service_account)
+                    session=_new_session(name,row["role"],True)
                     self.send_response(200);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Cache-Control","no-store")
                     self.session_cookie(session)
-                    role='mfa_setup' if row['role']=='admin' and not service_account else row['role']
-                    payload=json.dumps({"ok":True,"username":name,"role":role,'mfa_setup_required':role=='mfa_setup'},ensure_ascii=False).encode();self.send_header("Content-Length",str(len(payload)));self.end_headers();self.wfile.write(payload);return
+                    payload=json.dumps({"ok":True,"username":name,"role":row['role'],'mfa_setup_required':False},ensure_ascii=False).encode();self.send_header("Content-Length",str(len(payload)));self.end_headers();self.wfile.write(payload);return
                 except Exception as e:return self.send(400,{"error":str(e)})
             if self.path=="/api/v1/auth/mfa/verify":
                 try:
@@ -2594,7 +2583,6 @@ def server(host,port):
                             plain_codes,hashed_codes=_recovery_codes();c.execute('UPDATE accounts SET totp_last_step=?,recovery_codes=? WHERE name=?',(matched,json.dumps(hashed_codes),name))
                             return self.send(200,{'ok':True,'recovery_codes':plain_codes})
                         if action=='disable':
-                            if row['role']=='admin':raise ValueError('برای مدیر، ورود دومرحله‌ای اجباری است.')
                             if not verify_password(data.get('current_password',''),row['digest']):raise ValueError('گذرواژهٔ فعلی درست نیست.')
                             matched=_totp_match(_mfa_open(row['totp_secret']),data.get('code',''),row['totp_last_step'])
                             if matched=='replay':raise ValueError('این کد قبلاً استفاده شده؛ کد تازه را وارد کن.')
