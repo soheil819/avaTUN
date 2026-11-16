@@ -257,7 +257,7 @@ install -d -o root -g root -m 0700 /etc/tunnelmgr/openvpn
 install -d -o root -g root -m 0700 /etc/tunnelmgr/openconnect
 install -d -m 0700 /etc/tunnelmgr/mesh
 install -d -m 0755 /opt/tunnelmgr/scripts
-install -m 0755 "$ROOT/scripts/mesh-worker.py" "$ROOT/scripts/mesh-deploy.py" "$ROOT/scripts/github-update.py" "$ROOT/scripts/install-preview.sh" /opt/tunnelmgr/scripts/
+install -m 0755 "$ROOT/scripts/mesh-worker.py" "$ROOT/scripts/mesh-deploy.py" "$ROOT/scripts/github-update.py" "$ROOT/scripts/install-preview.sh" "$ROOT/scripts/tunnelmgr" /opt/tunnelmgr/scripts/
 install -d -o root -g root -m 0755 /opt/tunnelmgr/vendor/backhaul/bin /opt/tunnelmgr/vendor/backhaul/scripts
 install -o root -g root -m 0755 "$ROOT/vendor/backhaul/bin/backhaul" /opt/tunnelmgr/vendor/backhaul/bin/backhaul
 install -o root -g root -m 0755 "$ROOT/vendor/backhaul/scripts/backhaul-manager.py" /opt/tunnelmgr/vendor/backhaul/scripts/backhaul-manager.py

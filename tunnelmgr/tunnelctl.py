@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="1.0.0.7"
+APP_VERSION="1.0.0.8"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -937,6 +937,9 @@ def server_remote(server,payload):
 
 def install_remote(server):
     root=pathlib.Path(__file__).resolve().parents[1]
+    remote_scripts=("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py","tunnelmgr")
+    missing=[name for name in remote_scripts if not (root/"scripts"/name).is_file()]
+    if missing:raise RuntimeError("Central panel is missing remote installer files: "+", ".join(missing)+". Update the central panel, then retry.")
     stats=privileged({'op':'haproxy-stats','id':'forwards','action':'read'})
     if not stats.get('ok'):raise RuntimeError(stats.get('error','Could not read HAProxy statistics configuration'))
     with tempfile.NamedTemporaryFile(suffix=".tgz") as bundle:
@@ -948,9 +951,9 @@ def install_remote(server):
             for folder in ("tunnelmgr","web","packaging/systemd","vendor/backhaul"):
                 for p in (root/folder).rglob("*"):
                     if p.is_file():tf.add(p,arcname=str(p.relative_to(root)))
-            for name in ("install-preview.sh","install-xray-core.py","mesh-deploy.py","mesh-worker.py","github-update.py","tunnelmgr"):
+            for name in remote_scripts:
                 p=root/"scripts"/name
-                if p.is_file():tf.add(p,arcname=f"scripts/{name}")
+                tf.add(p,arcname=f"scripts/{name}")
             xray=pathlib.Path('/opt/tunnelmgr/bin/xray')
             arch={'x86_64':'linux-amd64','aarch64':'linux-arm64'}.get(platform.machine().lower())
             if arch and xray.is_file():tf.add(xray,arcname=f'runtime/xray-core-{arch}')
