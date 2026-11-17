@@ -28,25 +28,25 @@ avaTUN پنل وبی برای مدیریت تونل‌ها و سرورهای ل�
 
 فرمان زیر آخرین نسخهٔ پایدار را از GitHub می‌گیرد. اسکریپت، پیش‌نیازهای بررسی را آماده می‌کند و پیش از اجرای بسته، attestation امضاشدهٔ GitHub Actions را تأیید می‌کند:
 
-\`\`\`sh
+```sh
 curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash
-\`\`\`
+```
 
 نشانی پنل و اطلاعات ورود اولیه در پایان نصب در ترمینال نمایش داده می‌شوند. اگر Swap فعال موجود نباشد، نصب‌کننده Swap پایدار ۵۱۲ مگابایتی می‌سازد. پورت پیش‌فرض پنل 8765 است. برای نصب از checkout دستی:
 
-\`\`\`sh
+```sh
 git clone https://github.com/soheil819/avaTUN.git
 cd avaTUN
 sudo bash scripts/install-from-github.sh
-\`\`\`
+```
 
 برای اجرای محیط محلی از سورس:
 
-\`\`\`sh
+```sh
 python3 tunnelmgr/tunnelctl.py init
 python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
-\`\`\`
+```
 
 ### HTTP، HTTPS و امنیت
 
@@ -58,17 +58,17 @@ python3 tunnelmgr/tunnelctl.py account create admin --role admin
 
 برای حذف avaTUN، از پوشهٔ سورس روی همان میزبانی که می‌خواهید پاک‌سازی شود اجرا کنید:
 
-\`\`\`sh
+```sh
 sudo ./uninstall.sh
-\`\`\`
+```
 
 دامنهٔ حذف را بخوانید و عبارت REMOVE AVATUN را وارد کنید. حذف‌کننده پنل، ربات تلگرام، سرویس‌های تونل محلیِ مدیریت‌شده توسط avaTUN، فایل‌ها، پیکربندی، دادهٔ TLS و وضعیت محلی برنامه را حذف می‌کند؛ تونل‌های فعال مدیریت‌شده روی همان میزبان متوقف می‌شوند. بسته‌های سیستمی یا سرویس‌های مشترکی مانند FRR، HAProxy، Certbot و StrongSwan، قوانین فایروال، Swap، ماژول‌های کرنل، حساب tunnelmgr و نصب‌های سرورهای راه‌دور حذف نمی‌شوند. برای حذف نصب راه‌دور، حذف‌کننده را روی همان سرور اجرا کنید.
 
 بستهٔ نصب شامل هسته و مدیر Backhaul TUN با checksum تأییدشده برای Linux amd64 است. این اجزا در نصب نخست اضافه می‌شوند و به‌روزرسانی‌های بعدی پنل آن‌ها را حفظ می‌کنند. معماری‌های دیگر به بستهٔ هستهٔ Backhaul سازگار نیاز دارند. مجوز و اطلاعیه‌های وابستگی در vendor/backhaul/ قرار دارند. scripts/install-preview.sh برای به‌روزرسانی نصب موجود است و حساب ورود نمی‌سازد؛ به‌روزرسانی سرورهای راه‌دور نیز همان دارایی‌های تأییدشدهٔ Backhaul را منتقل می‌کند. اگر حسابی با طرح توکن قدیمی ساخته شده، گذرواژهٔ آن را یک‌بار بازنشانی کنید:
 
-\`\`\`sh
+```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
-\`\`\`
+```
 
 ### استقرار Mesh از CLI
 
@@ -96,25 +96,25 @@ For a two-ended link, create each endpoint on its own server and reverse the loc
 
 The command below fetches the latest stable release from GitHub. The installer bootstraps its verification prerequisites and verifies the GitHub Actions signed attestation before running the release package:
 
-\`\`\`sh
+```sh
 curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash
-\`\`\`
+```
 
 The installer prints the panel URL and initial login details at the end. If no active swap is found, it creates a persistent 512 MB swap file. The default panel port is 8765. To install from a manual checkout:
 
-\`\`\`sh
+```sh
 git clone https://github.com/soheil819/avaTUN.git
 cd avaTUN
 sudo bash scripts/install-from-github.sh
-\`\`\`
+```
 
 To start a local development instance from source:
 
-\`\`\`sh
+```sh
 python3 tunnelmgr/tunnelctl.py init
 python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
-\`\`\`
+```
 
 ### HTTP, HTTPS, and security
 
@@ -126,17 +126,17 @@ On Debian or Ubuntu, the installer prepares prerequisites and packages needed fo
 
 Run the uninstaller from the source directory on the host you want to remove avaTUN from:
 
-\`\`\`sh
+```sh
 sudo ./uninstall.sh
-\`\`\`
+```
 
 Review the removal scope and type REMOVE AVATUN. The uninstaller removes the panel, Telegram bot, avaTUN-managed local tunnel services, application files, configuration, TLS data, and local state. Active tunnels managed on that host are stopped. It preserves system packages and shared services such as FRR, HAProxy, Certbot, and StrongSwan, along with firewall rules, swap, kernel modules, the tunnelmgr account, and installations on remote servers. Run the uninstaller on a remote host to remove its own installation.
 
 The installer bundles the checksum-verified Backhaul TUN core and manager for Linux amd64. They are installed on first setup and preserved during later panel updates. Other CPU architectures need a matching Backhaul core package. License and third-party notices are in vendor/backhaul/. The scripts/install-preview.sh package installer updates an existing installation without creating login credentials. Remote server updates transfer the same verified Backhaul assets. Accounts created under the former token scheme need a one-time password reset:
 
-\`\`\`sh
+```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
-\`\`\`
+```
 
 ### CLI Mesh deployment
 
@@ -164,25 +164,25 @@ avaTUN 是用于管理 Linux 隧道和远程服务器的 Web 面板。通过 SSH
 
 下面的命令从 GitHub 获取最新稳定版。安装脚本会准备校验所需的前置工具，并在运行发布包之前验证 GitHub Actions 签名的 attestation：
 
-\`\`\`sh
+```sh
 curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash
-\`\`\`
+```
 
 安装结束时，终端会显示面板地址和初始登录信息。如果系统没有启用 swap，安装脚本会创建持久化的 512 MB swap 文件。面板默认端口为 8765。从手动克隆的代码安装：
 
-\`\`\`sh
+```sh
 git clone https://github.com/soheil819/avaTUN.git
 cd avaTUN
 sudo bash scripts/install-from-github.sh
-\`\`\`
+```
 
 从源码启动本地开发实例：
 
-\`\`\`sh
+```sh
 python3 tunnelmgr/tunnelctl.py init
 python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
-\`\`\`
+```
 
 ### HTTP、HTTPS 与安全
 
@@ -194,17 +194,17 @@ Debian/Ubuntu 安装程序会准备前置依赖及所选功能所需的软件包
 
 在要卸载 avaTUN 的那台主机上，进入源码目录并运行：
 
-\`\`\`sh
+```sh
 sudo ./uninstall.sh
-\`\`\`
+```
 
 阅读卸载范围并输入 REMOVE AVATUN 确认。卸载程序会移除面板、Telegram 机器人、由 avaTUN 管理的本地隧道服务、应用文件、配置、TLS 数据和本地状态；该主机上由 avaTUN 管理的活动隧道会停止。它不会删除 FRR、HAProxy、Certbot、StrongSwan 等系统软件包或共享服务，也会保留防火墙规则、swap、内核模块、tunnelmgr 账户和远程服务器上的安装。要卸载远程服务器，请在那台服务器上运行其卸载程序。
 
 安装包附带经过 checksum 验证、适用于 Linux amd64 的 Backhaul TUN 核心和管理器。首次安装时会安装它们，之后更新面板时会保留已安装版本。其他 CPU 架构需要匹配的 Backhaul 核心包。许可证和第三方声明位于 vendor/backhaul/。scripts/install-preview.sh 用于更新已有安装，不会创建登录账户。远程服务器更新也会传输相同的已验证 Backhaul 文件。使用旧 token 方案创建的账户需要重置一次密码：
 
-\`\`\`sh
+```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
-\`\`\`
+```
 
 ### CLI 部署 Mesh
 
@@ -232,25 +232,25 @@ avaTUN — веб-панель для управления Linux-туннеля�
 
 Команда ниже загружает последний стабильный выпуск с GitHub. Установщик подготавливает инструменты проверки и проверяет подписанную GitHub Actions attestation до запуска пакета выпуска:
 
-\`\`\`sh
+```sh
 curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash
-\`\`\`
+```
 
 В конце установки в терминале отображаются адрес панели и начальные данные входа. Если активный swap отсутствует, установщик создаёт постоянный файл подкачки размером 512 MB. Порт панели по умолчанию — 8765. Установка из вручную клонированного репозитория:
 
-\`\`\`sh
+```sh
 git clone https://github.com/soheil819/avaTUN.git
 cd avaTUN
 sudo bash scripts/install-from-github.sh
-\`\`\`
+```
 
 Запуск локального экземпляра из исходного кода:
 
-\`\`\`sh
+```sh
 python3 tunnelmgr/tunnelctl.py init
 python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
-\`\`\`
+```
 
 ### HTTP, HTTPS и безопасность
 
@@ -262,17 +262,17 @@ python3 tunnelmgr/tunnelctl.py account create admin --role admin
 
 Запустите удаление из каталога исходников на том узле, с которого нужно убрать avaTUN:
 
-\`\`\`sh
+```sh
 sudo ./uninstall.sh
-\`\`\`
+```
 
 Проверьте перечень удаляемых компонентов и введите REMOVE AVATUN. Скрипт удаляет панель, бота Telegram, локальные туннельные службы под управлением avaTUN, файлы приложения, настройки, TLS-данные и локальное состояние. Активные туннели, управляемые на этом узле, будут остановлены. Системные пакеты и общие службы FRR, HAProxy, Certbot и StrongSwan, правила firewall, swap, модули ядра, аккаунт tunnelmgr и установки на удалённых серверах сохраняются. Для удаления удалённой установки запустите её собственный скрипт на том сервере.
 
 В установщик включены проверенные по checksum ядро и менеджер Backhaul TUN для Linux amd64. Они устанавливаются при первом запуске и сохраняются при последующих обновлениях панели. Для других архитектур требуется подходящий пакет ядра Backhaul. Лицензия и уведомления третьих сторон находятся в vendor/backhaul/. Установщик пакетов scripts/install-preview.sh обновляет существующую установку и не создаёт учётные данные. Обновления удалённых серверов передают те же проверенные файлы Backhaul. Для аккаунтов старой схемы токенов требуется один раз сбросить пароль:
 
-\`\`\`sh
+```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
-\`\`\`
+```
 
 ### Развёртывание Mesh из CLI
 
@@ -300,25 +300,25 @@ Linux sunucularını SSH ile panele ekleyin. İlk kayıt sırasında SSH parolas
 
 Aşağıdaki komut GitHub’dan en son kararlı sürümü alır. Kurucu doğrulama önkoşullarını hazırlar ve sürüm paketini çalıştırmadan önce GitHub Actions imzalı attestation bilgisini doğrular:
 
-\`\`\`sh
+```sh
 curl -fsSL https://raw.githubusercontent.com/soheil819/avaTUN/main/install.sh | sudo bash
-\`\`\`
+```
 
 Kurulum sonunda panel adresi ve ilk giriş bilgileri terminalde gösterilir. Etkin swap yoksa kurucu kalıcı 512 MB swap dosyası oluşturur. Varsayılan panel portu 8765’tir. Elle klonlanan kaynak koddan kurulum:
 
-\`\`\`sh
+```sh
 git clone https://github.com/soheil819/avaTUN.git
 cd avaTUN
 sudo bash scripts/install-from-github.sh
-\`\`\`
+```
 
 Kaynak koddan yerel geliştirme örneğini başlatmak için:
 
-\`\`\`sh
+```sh
 python3 tunnelmgr/tunnelctl.py init
 python3 tunnelmgr/tunnelctl.py account create admin --role admin
 ./scripts/run-local.sh
-\`\`\`
+```
 
 ### HTTP, HTTPS ve güvenlik
 
@@ -330,17 +330,17 @@ Debian/Ubuntu kurucusu önkoşulları ve seçilen özelliklerin gerektirdiği pa
 
 avaTUN’ı kaldırmak istediğiniz makinede kaynak dizininden kaldırıcıyı çalıştırın:
 
-\`\`\`sh
+```sh
 sudo ./uninstall.sh
-\`\`\`
+```
 
 Kaldırma kapsamını inceleyin ve REMOVE AVATUN yazarak onaylayın. Kaldırıcı paneli, Telegram botunu, avaTUN tarafından yönetilen yerel tünel servislerini, uygulama dosyalarını, yapılandırmayı, TLS verilerini ve yerel durumu siler. O makinede avaTUN tarafından yönetilen etkin tüneller durdurulur. FRR, HAProxy, Certbot ve StrongSwan gibi sistem paketleri veya paylaşılan servisler; güvenlik duvarı kuralları, swap, çekirdek modülleri, tunnelmgr hesabı ve uzak sunuculardaki kurulumlar korunur. Uzak kurulumu kaldırmak için kaldırıcıyı o sunucuda çalıştırın.
 
 Kurucu, Linux amd64 için checksum doğrulaması yapılmış Backhaul TUN çekirdeğini ve yöneticisini içerir. İlk kurulumda yüklenir ve sonraki panel güncellemelerinde korunur. Diğer işlemci mimarileri uygun bir Backhaul çekirdek paketine ihtiyaç duyar. Lisans ve üçüncü taraf bildirimleri vendor/backhaul/ dizinindedir. scripts/install-preview.sh mevcut kurulumu günceller ve giriş hesabı oluşturmaz. Uzak sunucu güncellemeleri de aynı doğrulanmış Backhaul dosyalarını aktarır. Eski token şemasıyla oluşturulmuş hesapların parolası bir kez sıfırlanmalıdır:
 
-\`\`\`sh
+```sh
 python3 /opt/tunnelmgr/tunnelmgr/tunnelctl.py account password admin
-\`\`\`
+```
 
 ### CLI ile Mesh dağıtımı
 
