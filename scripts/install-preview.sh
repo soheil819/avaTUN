@@ -100,8 +100,6 @@ command -v ip >/dev/null 2>&1 || PACKAGES="$PACKAGES iproute2"
 command -v haproxy >/dev/null 2>&1 || PACKAGES="$PACKAGES haproxy"
 command -v wg >/dev/null 2>&1 || PACKAGES="$PACKAGES wireguard-tools"
 command -v openvpn >/dev/null 2>&1 || PACKAGES="$PACKAGES openvpn"
-command -v ocserv >/dev/null 2>&1 || PACKAGES="$PACKAGES ocserv"
-command -v openconnect >/dev/null 2>&1 || PACKAGES="$PACKAGES openconnect"
 command -v iperf3 >/dev/null 2>&1 || PACKAGES="$PACKAGES iperf3"
 command -v swanctl >/dev/null 2>&1 || PACKAGES="$PACKAGES strongswan-swanctl"
 CHARON_SYSTEMD_STATUS=$(dpkg-query -W -f='${Status}' charon-systemd 2>/dev/null || true)
@@ -124,7 +122,7 @@ case "$PYTHON_CRYPTO_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGE
 PYTHON_SNAPPY_STATUS=$(dpkg-query -W -f='${Status}' python3-snappy 2>/dev/null || true)
 case "$PYTHON_SNAPPY_STATUS" in 'install ok installed') ;; *) PACKAGES="$PACKAGES python3-snappy" ;; esac
 if [ -n "$PACKAGES" ] || [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
-    command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN, OpenConnect and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
+    command -v apt-get >/dev/null 2>&1 || { echo 'HAProxy, WireGuard, OpenVPN and Certbot require a Debian/Ubuntu package manager' >&2; exit 1; }
     DEBIAN_FRONTEND=noninteractive apt-get update
     if [ -s "$ROOT/runtime/slave-package-lock.json" ]; then
         python3 "$ROOT/scripts/sync-dependencies.py" "$ROOT/runtime/slave-package-lock.json"
