@@ -91,6 +91,16 @@ def iface(name):
     if not re.fullmatch(r'[A-Za-z0-9_]{1,15}', name): raise ValueError('invalid interface')
     return name
 
+def enable_ipv6_for_address(name,address):
+    """Enable IPv6 on this virtual link before assigning an IPv6 address."""
+    if ip.ip_interface(str(address)).version!=6:return
+    setting=pathlib.Path('/proc/sys/net/ipv6/conf',iface(name),'disable_ipv6')
+    try:
+        setting.write_text('0\n')
+        if setting.read_text().strip()!='0':raise OSError('the kernel kept IPv6 disabled')
+    except OSError as error:
+        raise RuntimeError(f'IPv6 is disabled on tunnel interface {name} and could not be enabled: {error}') from error
+
 def verify_tunnel_link(name, kind):
     """Only touch an existing virtual link of the saved tunnel's actual type."""
     name=iface(name);path=pathlib.Path('/sys/class/net')/name
@@ -238,6 +248,7 @@ def apply(profile, up, profile_name=None):
                 raise
             return
         try:
+            enable_ipv6_for_address(name,address)
             run('address','replace' if sit_shared else 'add',str(address),'dev',name)
             run('link','set',name,'mtu',str(int(profile.get('mtu',1400))),'up')
         except Exception:
@@ -274,6 +285,7 @@ def apply(profile, up, profile_name=None):
             peer+=['endpoint',endpoint+':'+str(int(profile['endpoint_port'])),'allowed-ips',str(peer_address)+peer_prefix]
             if int(profile.get('keepalive',25)):peer+=['persistent-keepalive',str(int(profile.get('keepalive',25)))]
             subprocess.run(cmd+peer,check=True,timeout=15)
+            enable_ipv6_for_address(name,profile['inner_local'])
             run('address','add',str(profile['inner_local']),'dev',name)
             run('link','set',name,'mtu',str(int(profile.get('mtu',1400))),'up')
         except Exception:
