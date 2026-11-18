@@ -114,8 +114,12 @@ def validate(group, cfg):
         if a==b:raise ValueError('Outer addresses must differ')
     elif kind in ('sit-6to4','sit-isatap'):
         ipaddress.IPv4Address(cfg['outer_local'])
-        if kind=='sit-isatap':ipaddress.IPv6Interface(cfg['inner_local'])
+        if kind=='sit-isatap':
+            if not cfg.get('inner_local'):raise ValueError('SIT ISATAP requires an inner IPv6 address')
+            ipaddress.IPv6Interface(cfg['inner_local'])
     elif kind=='sit-fou':
+        if not cfg.get('inner_local') or not cfg.get('inner_peer'):
+            raise ValueError('SIT FoU requires both inner_local and inner_peer IPv6 addresses')
         a,b=[ipaddress.IPv4Address(cfg[k]) for k in ('outer_local','outer_peer')]
         local,peer=[ipaddress.IPv6Interface(cfg[k]) for k in ('inner_local','inner_peer')]
         if a==b or local.ip==peer.ip or local.network!=peer.network:raise ValueError('SIT FoU requires distinct outer endpoints and peer IPv6 addresses in one prefix')
