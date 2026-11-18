@@ -15,7 +15,7 @@ from topology import mesh_plan
 from telegram_miniapp import allowed_role as telegram_miniapp_role, load_config as load_telegram_miniapp_config, verify_init_data
 
 APP_NAME="avatun"
-APP_VERSION="2.0.7"
+APP_VERSION="2.0.8"
 BASE=pathlib.Path(os.environ.get("TUNNELMGR_HOME",str(pathlib.Path.home()/".local/share/tunnelmgr")))
 DB=BASE/"state.sqlite3"
 MANAGER=os.environ.get("BACKHAUL_MANAGER","backhaul-manager")
@@ -705,7 +705,7 @@ def recommended_tunnel_mtu(server_a,server_b,host_a,host_b,transport):
 def ssh_argv(server):
     try:ipaddress.ip_address(server["host"].strip("[]"));host=f'[{server["host"].strip("[]")}]' if ":" in server["host"] else server["host"]
     except ValueError:host=server["host"]
-    cmd=["ssh","-T","-o","StrictHostKeyChecking=accept-new","-o",f"UserKnownHostsFile={BASE/'known_hosts'}","-o","ConnectTimeout=12","-o","BatchMode=yes"]
+    cmd=["ssh","-T","-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null","-o","GlobalKnownHostsFile=/dev/null","-o","CheckHostIP=no","-o","ConnectTimeout=12","-o","BatchMode=yes"]
     if server.get("identity"):cmd += ["-i",server["identity"],"-o","IdentitiesOnly=yes"]
     proxy_id=server.get("proxy_server_id")
     line_id=server.get("proxy_line_id") or ''
@@ -721,7 +721,7 @@ def ssh_argv(server):
         if proxy.get("proxy_server_id") or proxy.get('proxy_line_id'):raise ValueError("SSH proxy chains are limited to one hop")
         try:ipaddress.ip_address(proxy["host"].strip("[]"));proxy_host=f'[{proxy["host"].strip("[]")}]' if ":" in proxy["host"] else proxy["host"]
         except ValueError:proxy_host=proxy["host"]
-        jump=["ssh","-T","-o","StrictHostKeyChecking=accept-new","-o",f"UserKnownHostsFile={BASE/'known_hosts'}","-o","ConnectTimeout=12","-o","BatchMode=yes"]
+        jump=["ssh","-T","-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null","-o","GlobalKnownHostsFile=/dev/null","-o","CheckHostIP=no","-o","ConnectTimeout=12","-o","BatchMode=yes"]
         if proxy.get("identity"):jump += ["-i",proxy["identity"],"-o","IdentitiesOnly=yes"]
         jump += ["-W","%h:%p",f'{proxy["user"]}@{proxy_host}']
         cmd += ["-o","ProxyCommand="+shlex.join(jump)]
